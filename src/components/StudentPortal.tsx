@@ -345,27 +345,38 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
     }
 
     const studentRegDigits = (currentStudent.registrationNumber || currentStudent.id).replace(/\D/g, '');
-    const id12 = studentRegDigits.length === 12 ? studentRegDigits : (studentRegDigits.length > 0 ? studentRegDigits.padStart(12, '0').slice(-12) : '241000110549');
+    if (studentRegDigits.length !== 12) {
+      alert('The linked student registration number must be exactly 12 digits. Contact the placement administrator to correct it.');
+      return;
+    }
+    const id12 = studentRegDigits;
 
-    const validPassword = (profilePassword && profilePassword.trim().length >= 6)
-      ? profilePassword.trim()
-      : (currentStudent.password && currentStudent.password.length >= 6 ? currentStudent.password : 'password123');
+    if (!currentStudent.userId) {
+      alert('Your student profile is not linked to a backend user account. Contact the placement administrator.');
+      return;
+    }
+    if (!profileResume.trim() || !/^https?:\/\//i.test(profileResume.trim())) {
+      alert('Enter a valid public resume URL before saving.');
+      return;
+    }
+    if (!currentStudent.yearOfAdmission?.trim()) {
+      alert('Year of admission is missing from your backend profile. Contact the placement administrator.');
+      return;
+    }
 
     try {
       await studentApi.update({
         id: id12,
-        name: cleanedName,
-        email: cleanedEmail,
-        password: validPassword,
-        phone: cleanedPhone,
         department: profileBranch,
         activeBacklogs: backlogsNum,
-        resumeUrl: (profileResume && profileResume.trim().length > 0) ? profileResume.trim() : "https://example.com/resume.pdf",
-        year: Math.min(4, Math.max(1, Number(currentStudent.year || 4))),
-        cgpa: cgpaNum
+        resumeUrl: profileResume.trim(),
+        yearOfAdmission: currentStudent.yearOfAdmission.trim(),
+        cgpa: cgpaNum,
+        userId: currentStudent.userId,
       });
     } catch (err: any) {
-      console.warn('Backend student update failed or offline:', err);
+      alert(err instanceof Error ? err.message : 'Unable to save student details.');
+      return;
     }
 
     const updatedStudent: Student = {
@@ -373,7 +384,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       name: cleanedName,
       email: cleanedEmail,
       phone: cleanedPhone,
-      password: validPassword,
       department: profileBranch,
       cgpa: cgpaNum,
       backlogs: backlogsNum,
@@ -385,6 +395,15 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
     };
 
     onUpdateStudentProfile(updatedStudent);
+    if (
+      cleanedName !== currentStudent.name ||
+      cleanedEmail !== currentStudent.email ||
+      cleanedPhone !== currentStudent.phone ||
+      Boolean(profilePassword.trim()) ||
+      profileSkills !== (currentStudent.skills || []).join(', ')
+    ) {
+      alert('The backend saved department, CGPA, backlogs, admission year, and resume URL. Name, email, phone, password, and skills are not persisted because the current backend has no matching safe update DTO for these fields.');
+    }
   };
 
 const TAB_LABELS: Record<StudentTabType, string> = {

@@ -21,51 +21,59 @@ function normalizeDepartment(dept?: string): string {
   return "Computer Science";
 }
 
+async function enrichStudent(student: StudentResponse): Promise<StudentResponse> {
+  if (!student.userId) return { ...student, name: student.name || '', email: student.email || '', phone: student.phone || '', year: student.year ?? 0 };
+  const user = await request<any>(`/user/${student.userId}`).catch(() => null);
+  const name = user?.nameResponseDTO
+    ? [user.nameResponseDTO.firstName, user.nameResponseDTO.middleName, user.nameResponseDTO.lastName].filter(Boolean).join(" ")
+    : "";
+  return {
+    ...student,
+    name,
+    email: user?.email || "",
+    phone: user?.phone || "",
+    emailVerified: Boolean(user?.emailVerified),
+    year: student.year ?? 0,
+  };
+}
+
 export const studentApi = {
-  getAll: () => request<StudentResponse[]>("/students/all"),
+  getAll: async () => {
+    const students = await request<StudentResponse[]>("/students/all");
+    return Promise.all((students || []).map(enrichStudent));
+  },
 
-  getById: (id: string) => request<StudentResponse>(`/students/${id}`),
+  getById: async (id: string) => enrichStudent(await request<StudentResponse>(`/students/${id}`)),
 
-  add: (data: StudentRequest) => {
-    const cgpaVal = Number(data.cgpa ?? data.CGPA ?? 0);
-    const payload: Record<string, any> = {
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      password: data.password,
-      phone: data.phone,
-      department: normalizeDepartment(data.department),
-      activeBacklogs: Number(data.activeBacklogs ?? 0),
-      resumeUrl: (data.resumeUrl && data.resumeUrl.trim().length > 0) ? data.resumeUrl : "https://example.com/resume.pdf",
-      year: Math.min(4, Math.max(1, Number(data.year ?? 4))),
-      cgpa: cgpaVal,
-    };
-    return request<StudentResponse>("/students/add", {
+  add: (data: StudentRequest) =>
+    request<StudentResponse>("/students/add", {
       method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
+      body: JSON.stringify({
+        id: data.id,
+        department: normalizeDepartment(data.department),
+        cgpa: Number(data.cgpa ?? 0),
+        activeBacklogs: Number(data.activeBacklogs ?? 0),
+        resumeUrl: data.resumeUrl,
+        yearOfAdmission: data.yearOfAdmission,
+        dateOfBirth: data.dateOfBirth,
+        userId: data.userId,
+      }),
+    }),
 
-  update: (data: StudentRequest) => {
-    const cgpaVal = Number(data.cgpa ?? data.CGPA ?? 0);
-    const passwordVal = (data.password && data.password.trim().length >= 6) ? data.password.trim() : "password123";
-    const payload: Record<string, any> = {
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      password: passwordVal,
-      phone: data.phone,
-      department: normalizeDepartment(data.department),
-      activeBacklogs: Number(data.activeBacklogs ?? 0),
-      resumeUrl: (data.resumeUrl && data.resumeUrl.trim().length > 0) ? data.resumeUrl : "https://example.com/resume.pdf",
-      year: Math.min(4, Math.max(1, Number(data.year ?? 4))),
-      cgpa: cgpaVal,
-    };
-    return request<StudentResponse>("/students/update", {
+  update: (data: StudentRequest) =>
+    request<StudentResponse>("/students/update", {
       method: "PUT",
-      body: JSON.stringify(payload),
-    });
-  },
+      body: JSON.stringify({
+        id: data.id,
+        department: normalizeDepartment(data.department),
+        cgpa: Number(data.cgpa),
+        activeBacklogs: Number(data.activeBacklogs ?? 0),
+        resumeUrl: data.resumeUrl,
+        yearOfAdmission: data.yearOfAdmission,
+        dateOfBirth: data.dateOfBirth,
+        userId: data.userId,
+      }),
+    }),
 
   delete: (id: string) =>
     request<string>(`/students/delete/${id}`, { method: "DELETE" }),
@@ -74,16 +82,16 @@ export const studentApi = {
     request<StudentRoundVisualizerResponse[]>(`/students/stageVisualizer/${id}`),
 
   verifyEmail: (id: string) =>
-    request<string>(`/students/${encodeURIComponent(id)}/verifyEmail`, {
+    request<string>(`/user/${encodeURIComponent(id)}/verifyEmail`, {
       method: "POST",
     }),
 
   confirmVerificationToken: (token: string) =>
-    request<string>(`/students/verify-email?token=${encodeURIComponent(token)}`),
+    request<string>(`/user/verify-email?token=${encodeURIComponent(token)}`),
 
   getAllWithPlacementInfo: async (): Promise<StudentWithPlacement[]> => {
     const [students, applications, jobPostings] = await Promise.all([
-      request<StudentResponse[]>("/students/all").catch(() => []),
+      studentApi.getAll().catch(() => []),
       applicationApi.getAll().catch(() => []),
       jobPostingApi.getAll().catch(() => []),
     ]);
@@ -106,12 +114,14 @@ export const studentApi = {
         : undefined;
       return {
         id: s.id,
-        name: s.name,
-        email: s.email,
+        userId: s.userId,
+        yearOfAdmission: s.yearOfAdmission,
+        name: s.name || "",
+        email: s.email || "",
         phone: s.phone,
         department: s.department,
         cgpa: s.cgpa ?? s.CGPA ?? 0,
-        backlogs: s.activeBacklogs,
+        backlogs: s.activeBacklogs ?? 0,
         placementStatus: placedApp ? "Placed" : "Unplaced",
         placedCompany: placedApp?.companyName,
         placedPackage: placedPosting?.salary != null

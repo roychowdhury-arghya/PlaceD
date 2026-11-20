@@ -1,10 +1,22 @@
 import request from "./client";
 import type { RecruiterResponse, RecruiterRequest } from "./types";
 
-export const recruiterApi = {
-  getAll: () => request<RecruiterResponse[]>("/recruiters/all"),
+const enrichRecruiter = async (recruiter: RecruiterResponse): Promise<RecruiterResponse> => {
+  if (!recruiter.userId) return { ...recruiter, name: '', email: '' };
+  const user = await request<any>(`/user/${recruiter.userId}`).catch(() => null);
+  const name = user?.nameResponseDTO
+    ? [user.nameResponseDTO.firstName, user.nameResponseDTO.middleName, user.nameResponseDTO.lastName].filter(Boolean).join(" ")
+    : "";
+  return { ...recruiter, name, email: user?.email || "" };
+};
 
-  getById: (id: number) => request<RecruiterResponse>(`/recruiters/${id}`),
+export const recruiterApi = {
+  getAll: async () => {
+    const recruiters = await request<RecruiterResponse[]>("/recruiters/all");
+    return Promise.all((recruiters || []).map(enrichRecruiter));
+  },
+
+  getById: async (id: number) => enrichRecruiter(await request<RecruiterResponse>(`/recruiters/${id}`)),
 
   register: (data: RecruiterRequest) =>
     request<RecruiterResponse>("/recruiters/register", {

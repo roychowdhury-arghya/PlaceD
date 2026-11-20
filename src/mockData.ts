@@ -48,12 +48,14 @@ export interface Recruiter {
 
 export interface Student {
   id: string;
+  userId?: number;
   name: string;
   email: string;
   registrationNumber?: string;
   password: string;
   phone?: string;
   year?: number;
+  yearOfAdmission?: string;
 
   department: string;
   branch: string;

@@ -1,5 +1,6 @@
 export interface StudentResponse {
   id: string;
+  userId?: number;
   name: string;
   email: string;
   registrationNumber?: string;
@@ -9,22 +10,21 @@ export interface StudentResponse {
   CGPA?: number;
   activeBacklogs: number;
   resumeUrl: string;
+  yearOfAdmission?: string;
   year: number;
+  dateOfBirth?: string;
   emailVerified?: boolean;
 }
 
 export interface StudentRequest {
   id: string;
-  name: string;
-  email: string;
-  password?: string;
-  phone: string;
   department: string;
+  cgpa: number;
   activeBacklogs?: number;
   resumeUrl: string;
-  year: number;
-  cgpa?: number;
-  CGPA?: number;
+  yearOfAdmission: string;
+  dateOfBirth?: string;
+  userId: number;
 }
 export interface CompanyResponse {
   id: number;
@@ -150,6 +150,7 @@ export type RecruiterStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export interface RecruiterResponse {
   id: number;
+  userId?: number;
   name: string;
   email: string;
   companyName: string;
@@ -158,9 +159,7 @@ export interface RecruiterResponse {
   recruiterStatus: RecruiterStatus;
 }
 export interface RecruiterRequest {
-  name: string;
-  email: string;
-  password: string;
+  userId: number;
   companyName: string;
   designation?: string;
   industry?: string;
@@ -212,6 +211,8 @@ export interface TPODashboardResponse {
 }
 export interface StudentWithPlacement {
   id: string;
+  userId?: number;
+  yearOfAdmission?: string;
   name: string;
   email: string;
   phone?: string;
@@ -299,22 +300,19 @@ export interface StudentRoundVisualizerResponse {
 }
 
 export interface TPOUserRequest {
-  name: string;
-  email: string;
-  password?: string;
+  userId: number;
 }
 
 export interface TPOUserResponse {
   id: number;
-  name: string;
-  email: string;
+  userId: number;
+  hrContacts?: unknown[];
 }
 
 export interface AlumniRequest {
   id?: number;
-  email?: string;
-  password?: string;
-  name?: string;
+  userId: number;
+  studentRegnNo: string;
   bio?: string;
   location?: string;
   linkedinUrl?: string;
@@ -325,8 +323,8 @@ export interface AlumniRequest {
 
 export interface AlumniResponse {
   id: number;
-  email: string;
-  name: string;
+  userId: number;
+  studentRegnNo: string;
   bio?: string;
   location?: string;
   linkedinUrl?: string;

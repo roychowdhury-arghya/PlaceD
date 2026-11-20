@@ -99,6 +99,149 @@ export const Auth: React.FC<AuthProps> = ({
   const [showPassword, setShowPassword] =
     useState(false);
 
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationUserId, setVerificationUserId] = useState<number | null>(null);
+  const [commonPhone, setCommonPhone] = useState('');
+  const [collegeId, setCollegeId] = useState('');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [addressCity, setAddressCity] = useState('');
+  const [addressState, setAddressState] = useState('');
+  const [addressCountry, setAddressCountry] = useState('India');
+  const [addressPostalCode, setAddressPostalCode] = useState('');
+  const [alumniStudentRegnNo, setAlumniStudentRegnNo] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendAttempts, setResendAttempts] = useState<number[]>([]);
+  void onRegisterAlumni;
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(
+      () => setResendCooldown((seconds) => Math.max(0, seconds - 1)),
+      1000
+    );
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleAuthError = (err: any, email: string, fallback: string) => {
+    if (err?.status === 403) {
+      setVerificationEmail(email.trim().toLowerCase());
+      setError('Your email address is not verified. Verify it or request a new verification email.');
+      return;
+    }
+    setError(err?.message || fallback);
+  };
+
+  const handleResendVerification = async () => {
+    const now = Date.now();
+    const oneHourAgo = now - 60 * 60 * 1000;
+    const recentAttempts = resendAttempts.filter((time) => time > oneHourAgo);
+    if (resendCooldown > 0) return;
+    if (recentAttempts.length >= 3) {
+      setError('You have reached the resend limit. Please try again after an hour.');
+      return;
+    }
+    try {
+      if (!verificationUserId) {
+        setError('Please contact the placement administrator to resend your verification email.');
+        return;
+      }
+      const updatedAttempts = [...recentAttempts, now];
+      setResendAttempts(updatedAttempts);
+      localStorage.setItem('placed_verification_resend_attempts', JSON.stringify(updatedAttempts));
+      setResendCooldown(60);
+      await userApi.sendVerification(verificationUserId);
+      setError('A new verification email has been requested. Check your inbox.');
+    } catch (err: any) {
+      handleAuthError(err, verificationEmail, 'Unable to resend verification email.');
+    }
+  };
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('placed_verification_resend_attempts') || '[]');
+      if (Array.isArray(saved)) {
+        const validAttempts = saved.filter((value) => typeof value === 'number' && value > Date.now() - 60 * 60 * 1000);
+        setResendAttempts(validAttempts);
+        const latestAttempt = validAttempts.length ? Math.max(...validAttempts) : 0;
+        if (latestAttempt) {
+          setResendCooldown(Math.max(0, 60 - Math.floor((Date.now() - latestAttempt) / 1000)));
+        }
+      }
+      const savedUserId = Number(localStorage.getItem('placed_verification_user_id'));
+      if (Number.isInteger(savedUserId) && savedUserId > 0) {
+        setVerificationUserId(savedUserId);
+        setVerificationEmail(localStorage.getItem('placed_verification_email') || '');
+      }
+    } catch {
+      setResendAttempts([]);
+    }
+  }, []);
+
+  const buildBaseUserRequest = (
+    fullName: string,
+    email: string,
+    password: string,
+    role: 'STUDENT' | 'ALUMNI' | 'RECRUITER' | 'TPO',
+    phone: string
+  ) => {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) throw new Error('Please enter your full name.');
+    const firstName = parts[0];
+    const lastName = parts.length > 1 ? parts[parts.length - 1] : '';
+    const middleName = parts.length > 2 ? parts.slice(1, -1).join(' ') : '';
+    const numericCollegeId = Number(collegeId);
+    if (!Number.isInteger(numericCollegeId) || numericCollegeId <= 0) {
+      throw new Error('Enter the College ID assigned by your placement administrator.');
+    }
+    if (!addressLine1.trim() || !addressCity.trim() || !addressState.trim() ||
+        !addressCountry.trim() || !addressPostalCode.trim()) {
+      throw new Error('Complete the required address and college details.');
+    }
+    if (!/^[6-9]\d{9}$/.test(phone.trim())) {
+      throw new Error('Enter a valid 10-digit mobile number.');
+    }
+    return {
+      nameRequest: { pronounce: 'They', firstName, middleName, lastName },
+      addressRequest: {
+        addressLine1: addressLine1.trim(),
+        addressLine2: addressLine2.trim(),
+        city: addressCity.trim(),
+        state: addressState.trim(),
+        country: addressCountry.trim(),
+        postalCode: addressPostalCode.trim(),
+      },
+      email: email.trim().toLowerCase(),
+      password,
+      role,
+      phone: phone.trim(),
+      college_id: numericCollegeId,
+    };
+  };
+
+  const createBaseUser = async (
+    fullName: string,
+    email: string,
+    password: string,
+    role: 'STUDENT' | 'ALUMNI' | 'RECRUITER' | 'TPO',
+    phone: string
+  ) => userApi.register(buildBaseUserRequest(fullName, email, password, role, phone));
+
+  const completeRegistration = async (userId: number, email: string) => {
+    setVerificationUserId(userId);
+    localStorage.setItem('placed_verification_user_id', String(userId));
+    localStorage.setItem('placed_verification_email', email.toLowerCase().trim());
+    setVerificationEmail(email.toLowerCase().trim());
+    setAuthMode('login');
+    setSearchParams({ mode: 'login' });
+    try {
+      await userApi.sendVerification(userId);
+      setError('Your account has been created and a verification email has been requested. Check your inbox.');
+    } catch {
+      setError('Your account was created, but the backend could not send the verification email. Please contact the placement administrator.');
+    }
+  };
+
   useEffect(() => {
     const modeParam = searchParams.get('mode');
 
@@ -109,6 +252,24 @@ export const Auth: React.FC<AuthProps> = ({
       setAuthMode(modeParam);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const token = searchParams.get('token');
+    if (!token) return;
+    userApi.confirmVerificationToken(token)
+      .then((message) => {
+        if (typeof message !== 'string' || !message.toLowerCase().includes('email verified') || message.toLowerCase().includes('not verified')) {
+          throw new Error('Verification was not successful.');
+        }
+        setError('Your email has been verified. You can now sign in.');
+        setVerificationEmail('');
+        setVerificationUserId(null);
+        localStorage.removeItem('placed_verification_user_id');
+        localStorage.removeItem('placed_verification_email');
+        setSearchParams({ mode: 'login' });
+      })
+      .catch(() => setError('This verification link is invalid or expired.'));
+  }, [searchParams, setSearchParams]);
 
   const handleModeChange = (
     mode: 'login' | 'register'
@@ -135,7 +296,7 @@ export const Auth: React.FC<AuthProps> = ({
   const [regEmail, setRegEmail] = useState('');
   const [regRegistrationNumber, setRegRegistrationNumber] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regPhone, setRegPhone] = useState('9876543210');
+  const [regPhone, setRegPhone] = useState('');
 
   const [regBranch, setRegBranch] = useState<
     | 'Computer Science'
@@ -146,10 +307,9 @@ export const Auth: React.FC<AuthProps> = ({
   >('Computer Science');
 
   const [regCgpa, setRegCgpa] = useState('8.0');
+  const [regYearOfAdmission, setRegYearOfAdmission] = useState('');
   const [regSkills, setRegSkills] = useState('React, TypeScript, JavaScript');
-  const [regResume, setRegResume] = useState(
-    'Enthusiastic developer skilled in frontend applications.'
-  );
+  const [regResume, setRegResume] = useState('');
 
   /* =========================================================
      ALUMNI REGISTRATION
@@ -215,6 +375,9 @@ export const Auth: React.FC<AuthProps> = ({
           identifier: loginInput,
           password: studentPassword,
         });
+        if (res?.role !== 'STUDENT') {
+          throw new Error('This account is not registered with the Student role.');
+        }
 
         if (res?.token) {
           localStorage.setItem('token', res.token);
@@ -223,32 +386,27 @@ export const Auth: React.FC<AuthProps> = ({
           }
           localStorage.setItem('role', res.role || 'STUDENT');
 
-          // Resolve student registration ID (e.g. 241000110549) if identifier was an email
+          // The backend student profile is keyed by the 12-digit registration number.
           let resolvedStudentId = loginInput;
-          try {
+          if (!/^\d{12}$/.test(loginInput)) {
             const allStudents = await studentApi.getAll();
             const found = allStudents.find(
-              (s) =>
-                String(s.id).toLowerCase().trim() === loginInput.toLowerCase() ||
-                (s.email && s.email.toLowerCase().trim() === loginInput.toLowerCase())
+              (student) => student.email?.toLowerCase().trim() === loginInput.toLowerCase()
             );
-            if (found) {
-              resolvedStudentId = String(found.id);
-            }
-          } catch {
-            // Fallback to loginInput
+            if (!found) throw new Error('Your student account has no linked student profile. Contact the placement administrator.');
+            resolvedStudentId = String(found.id);
           }
 
           localStorage.setItem('studentId', resolvedStudentId);
           onLogin('student', resolvedStudentId);
         } else {
-          onLogin('student', loginInput);
+          throw new Error('The backend did not return an access token. Please try again.');
         }
       } catch (err: any) {
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('role');
-        setError(err?.message || 'Invalid student credentials.');
+        handleAuthError(err, loginInput, 'Invalid student credentials.');
       } finally {
         setIsSubmitting(false);
       }
@@ -382,30 +540,24 @@ export const Auth: React.FC<AuthProps> = ({
 
     setIsSubmitting(true);
     try {
+      if (!regResume.trim() || !/^https?:\/\//i.test(regResume.trim())) {
+        throw new Error('Enter a valid public resume URL (https://...).');
+      }
+      const baseUser = await createBaseUser(newStudent.name, normalizedEmail, regPassword, 'STUDENT', cleanedPhone);
       await studentApi.add({
         id: numericRegNo,
-        name: newStudent.name,
-        email: newStudent.email,
-        password: newStudent.password || 'password123',
-        phone: cleanedPhone,
         department: newStudent.department,
-        resumeUrl: newStudent.resumeText || 'https://example.com/resume.pdf',
-        year: 4,
         cgpa: newStudent.cgpa,
-        activeBacklogs: 0
+        activeBacklogs: 0,
+        resumeUrl: regResume.trim(),
+        yearOfAdmission: regYearOfAdmission.trim(),
+        userId: baseUser.id,
       });
 
-      onRegister(newStudent);
-
+      onRegister({ ...newStudent, userId: baseUser.id, yearOfAdmission: regYearOfAdmission.trim() });
       setStudentRegNo(normalizedEmail);
       setStudentPassword('');
-
-      setAuthMode('login');
-      setSearchParams({ mode: 'login' });
-
-      setError(
-        'Student account created successfully. You can now sign in.'
-      );
+      await completeRegistration(baseUser.id, normalizedEmail);
     } catch (err: any) {
       setError(err?.message || 'Student registration failed.');
     } finally {
@@ -437,6 +589,9 @@ export const Auth: React.FC<AuthProps> = ({
           password: alumniPassword,
           role: 'ALUMNI',
         });
+        if (res?.role !== 'ALUMNI') {
+          throw new Error('This account is not registered with the Alumni role.');
+        }
 
         if (res?.token) {
           localStorage.setItem('token', res.token);
@@ -445,33 +600,24 @@ export const Auth: React.FC<AuthProps> = ({
           }
           localStorage.setItem('role', res.role || 'ALUMNI');
 
-          let resolvedAlumniId = loginEmail;
-          try {
-            const allAlumni = await alumniApi.getAll();
-            const found = allAlumni.find(
-              (a) =>
-                String(a.id).toLowerCase().trim() === loginEmail.toLowerCase() ||
-                (a.email && a.email.toLowerCase().trim() === loginEmail.toLowerCase())
-            );
-            if (found) {
-              resolvedAlumniId = String(found.id);
-            }
-          } catch {
-            // Fallback
-          }
+          const allAlumni = await alumniApi.getAll();
+          const foundAlumni = allAlumni.find(
+            (a) => a.email.toLowerCase().trim() === loginEmail.toLowerCase()
+          );
+          if (!foundAlumni) throw new Error('Your account has no linked alumni profile. Contact the placement administrator.');
+          const resolvedAlumniId = String(foundAlumni.id);
 
           localStorage.setItem('alumniId', resolvedAlumniId);
           onLogin('alumni', resolvedAlumniId);
         } else {
-          localStorage.setItem('alumniId', loginEmail);
-          onLogin('alumni', loginEmail);
+          throw new Error('The backend did not return an access token. Please try again.');
         }
       } catch (err: any) {
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('role');
         localStorage.removeItem('alumniId');
-        setError(err?.message || 'Invalid alumni credentials.');
+        handleAuthError(err, loginEmail, 'Invalid alumni credentials.');
       } finally {
         setIsSubmitting(false);
       }
@@ -551,13 +697,20 @@ export const Auth: React.FC<AuthProps> = ({
 
     try {
       setIsSubmitting(true);
-      await onRegisterAlumni(registrationRequest);
-
+      if (!/^\d{12}$/.test(alumniStudentRegnNo.trim())) {
+        throw new Error('Enter the 12-digit registration number of your existing student record.');
+      }
+      const baseUser = await createBaseUser(alumniName.trim(), normalizedEmail, alumniPassword, 'ALUMNI', commonPhone);
+      await alumniApi.addDetails({
+        userId: baseUser.id,
+        studentRegnNo: alumniStudentRegnNo.trim(),
+        bio: `${registrationRequest.currentRole} at ${registrationRequest.currentCompany}; graduated ${graduationYear}; department: ${registrationRequest.department}`,
+        location: addressCity.trim(),
+        linkedinUrl: registrationRequest.linkedIn,
+      });
       setAlumniEmail(normalizedEmail);
       setStudentPassword('');
-      setAuthMode('login');
-      setSearchParams({ mode: 'login' });
-      setError('Alumni account created successfully. You can now sign in.');
+      await completeRegistration(baseUser.id, normalizedEmail);
     } catch (error) {
       setError(
         error instanceof Error ? error.message : 'Unable to register alumni.'
@@ -593,45 +746,41 @@ export const Auth: React.FC<AuthProps> = ({
           password: recruiterPassword,
           role: 'RECRUITER',
         });
-
-        if (res?.token) {
-          localStorage.setItem('token', res.token);
-          if (res.refreshToken) {
-            localStorage.setItem('refreshToken', res.refreshToken);
-          }
-          localStorage.setItem('role', res.role || 'RECRUITER');
+        if (res?.role !== 'RECRUITER') {
+          throw new Error('This account is not registered with the Recruiter role.');
         }
 
-        const allRecruiters = await recruiterApi.getAll().catch(() => []);
+        if (!res?.token) throw new Error('The backend did not return an access token. Please try again.');
+        localStorage.setItem('token', res.token);
+        if (res.refreshToken) localStorage.setItem('refreshToken', res.refreshToken);
+        localStorage.setItem('role', res.role || 'RECRUITER');
 
+        const allRecruiters = await recruiterApi.getAll();
         const realRecruiter = allRecruiters.find(
-          (r) => r.email.toLowerCase().trim() === identifier.toLowerCase().trim()
+          (recruiter) => recruiter.email.toLowerCase().trim() === identifier.toLowerCase().trim()
         );
-
-        if (realRecruiter) {
-          if (realRecruiter.recruiterStatus !== 'APPROVED') {
-            localStorage.removeItem('token');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('role');
-            if (realRecruiter.recruiterStatus === 'REJECTED') {
-              setError('Your recruiter account request has been rejected by TPO.');
-            } else {
-              setError('Your recruiter account is pending TPO approval. Please wait for the TPO to approve your account before logging in.');
-            }
-            return;
-          }
-          localStorage.setItem('recruiterId', String(realRecruiter.id));
-          onLogin('recruiter', String(realRecruiter.id));
-        } else {
-          localStorage.setItem('recruiterId', identifier);
-          onLogin('recruiter', identifier);
+        if (!realRecruiter) {
+          throw new Error('Your account has no linked recruiter profile. Contact the placement administrator.');
         }
+        if (realRecruiter.recruiterStatus !== 'APPROVED') {
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('role');
+          if (realRecruiter.recruiterStatus === 'REJECTED') {
+            setError('Your recruiter account request has been rejected by TPO.');
+          } else {
+            setError('Your recruiter account is pending TPO approval. Please wait for the TPO to approve your account before logging in.');
+          }
+          return;
+        }
+        localStorage.setItem('recruiterId', String(realRecruiter.id));
+        onLogin('recruiter', String(realRecruiter.id));
       } catch (err: any) {
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('role');
         localStorage.removeItem('recruiterId');
-        setError(err?.message || 'Invalid recruiter credentials.');
+        handleAuthError(err, recruiterEmail, 'Invalid recruiter credentials.');
       } finally {
         setIsSubmitting(false);
       }
@@ -672,20 +821,22 @@ export const Auth: React.FC<AuthProps> = ({
 
     setIsSubmitting(true);
     try {
-      await recruiterApi.register({
-        name: newRecruiter.name,
-        email: newRecruiter.email,
-        password: newRecruiter.password || 'password',
-        companyName: newRecruiter.companyName,
+      const baseUser = await createBaseUser(recName.trim(), normalizedEmail, recPassword, 'RECRUITER', commonPhone);
+      const createdRecruiter = await recruiterApi.register({
+        userId: baseUser.id,
+        companyName: recCompany.trim(),
         designation: newRecruiter.designation,
       });
 
-      onRegisterRecruiter(newRecruiter);
+      onRegisterRecruiter({
+        ...newRecruiter,
+        id: String(createdRecruiter.id),
+        recruiterStatus: createdRecruiter.recruiterStatus,
+      });
       setRecruiterEmail(normalizedEmail);
       setRecruiterPassword('');
-      setAuthMode('login');
-      setSearchParams({ mode: 'login' });
-      setError('Recruiter account registered successfully. Please wait for TPO approval before logging in.');
+      await completeRegistration(baseUser.id, normalizedEmail);
+      setError('Recruiter account created. A verification email was requested; TPO approval is also required before recruiter access.');
     } catch (err: any) {
       setError(err?.message || 'Recruiter registration failed.');
     } finally {
@@ -710,6 +861,9 @@ export const Auth: React.FC<AuthProps> = ({
           password: adminPassword,
           role: 'TPO',
         });
+        if (res?.role !== 'TPO') {
+          throw new Error('This account is not registered with the TPO role.');
+        }
 
         if (res?.token) {
           localStorage.setItem('token', res.token);
@@ -725,7 +879,7 @@ export const Auth: React.FC<AuthProps> = ({
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('role');
-        setError(err?.message || 'Unable to log in as administrator.');
+        handleAuthError(err, adminEmail, 'Unable to log in as administrator.');
       } finally {
         setIsSubmitting(false);
       }
@@ -741,17 +895,11 @@ export const Auth: React.FC<AuthProps> = ({
     setIsSubmitting(true);
     try {
       const normalizedEmail = adminEmail.toLowerCase().trim();
-      await userApi.register({
-        name: adminName.trim(),
-        email: normalizedEmail,
-        password: adminPassword,
-      });
-
+      const baseUser = await createBaseUser(adminName.trim(), normalizedEmail, adminPassword, 'TPO', commonPhone);
+      await userApi.registerTpo(baseUser.id);
       setAdminEmail(normalizedEmail);
       setAdminPassword('');
-      setAuthMode('login');
-      setSearchParams({ mode: 'login' });
-      setError('TPO Admin account created successfully. You can now sign in.');
+      await completeRegistration(baseUser.id, normalizedEmail);
     } catch (err: any) {
       setError(err?.message || 'TPO Admin registration failed.');
     } finally {
@@ -1071,6 +1219,114 @@ export const Auth: React.FC<AuthProps> = ({
                   <span className="auth-error-dot" />
 
                   <span>{error}</span>
+                  {verificationEmail && verificationUserId && (
+                    <button
+                      type="button"
+                      onClick={handleResendVerification}
+                      disabled={isSubmitting || resendCooldown > 0 || resendAttempts.filter((time) => time > Date.now() - 60 * 60 * 1000).length >= 3}
+                      className="ml-2 underline font-semibold disabled:opacity-50"
+                    >
+                      {resendCooldown > 0
+                        ? `Resend in ${resendCooldown}s`
+                        : resendAttempts.filter((time) => time > Date.now() - 60 * 60 * 1000).length >= 3
+                          ? 'Resend limit reached'
+                          : 'Resend verification email'}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {authMode === 'register' && (
+                <div className="auth-form-scrollable my-4 rounded-xl border border-slate-200 p-4">
+                  <h3 className="font-semibold mb-3">Account details required by PlaceD</h3>
+                  {activeRole !== 'student' && (
+                    <div className="auth-input-group mb-3">
+                      <label className="auth-input-label">Mobile Number *</label>
+                      <input type="tel" required maxLength={10} value={commonPhone}
+                        onChange={(e) => setCommonPhone(e.target.value.replace(/\\D/g, '').slice(0, 10))}
+                        placeholder="10-digit mobile number" className="auth-input-field" />
+                    </div>
+                  )}
+                  <div className="auth-input-group mb-3">
+                    <label className="auth-input-label">College ID *</label>
+                    <input type="number" min="1" required value={collegeId}
+                      onChange={(e) => setCollegeId(e.target.value)}
+                      placeholder="College ID provided by your TPO" className="auth-input-field" />
+                    <p className="text-xs text-slate-500 mt-1">The current backend accepts a college ID, but does not expose a college-list endpoint.</p>
+                  </div>
+                  <div className="auth-input-group mb-3">
+                    <label className="auth-input-label">Address Line 1 *</label>
+                    <input required value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)}
+                      placeholder="House / street / locality" className="auth-input-field" />
+                  </div>
+                  <div className="auth-input-group mb-3">
+                    <label className="auth-input-label">Address Line 2</label>
+                    <input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)}
+                      placeholder="Apartment / landmark (optional)" className="auth-input-field" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="auth-input-group">
+                      <label className="auth-input-label">City *</label>
+                      <input required value={addressCity} onChange={(e) => setAddressCity(e.target.value)}
+                        className="auth-input-field" />
+                    </div>
+                    <div className="auth-input-group">
+                      <label className="auth-input-label">State *</label>
+                      <input required value={addressState} onChange={(e) => setAddressState(e.target.value)}
+                        className="auth-input-field" />
+                    </div>
+                    <div className="auth-input-group">
+                      <label className="auth-input-label">Country *</label>
+                      <input required value={addressCountry} onChange={(e) => setAddressCountry(e.target.value)}
+                        className="auth-input-field" />
+                    </div>
+                    <div className="auth-input-group">
+                      <label className="auth-input-label">Postal Code *</label>
+                      <input required value={addressPostalCode} onChange={(e) => setAddressPostalCode(e.target.value)}
+                        className="auth-input-field" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {authMode === 'register' && (
+                <div className="auth-form-scrollable my-4 rounded-xl border border-slate-200 p-4">
+                  <h3 className="font-semibold mb-3">Additional details required by the backend</h3>
+                  {activeRole !== 'student' && (
+                    <div className="auth-input-group mb-3">
+                      <label className="auth-input-label">Mobile Number *</label>
+                      <input type="tel" required maxLength={10} value={commonPhone}
+                        onChange={(e) => setCommonPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        placeholder="10-digit mobile number" className="auth-input-field" />
+                    </div>
+                  )}
+                  <div className="auth-input-group mb-3">
+                    <label className="auth-input-label">College ID *</label>
+                    <input type="number" min="1" required value={collegeId}
+                      onChange={(e) => setCollegeId(e.target.value)}
+                      placeholder="College ID supplied by your TPO" className="auth-input-field" />
+                    <p className="text-xs text-slate-500 mt-1">The existing backend accepts a numeric college ID but does not expose a college-list endpoint.</p>
+                  </div>
+                  <div className="auth-input-group mb-3">
+                    <label className="auth-input-label">Address Line 1 *</label>
+                    <input required value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)}
+                      placeholder="House / street / locality" className="auth-input-field" />
+                  </div>
+                  <div className="auth-input-group mb-3">
+                    <label className="auth-input-label">Address Line 2</label>
+                    <input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)}
+                      placeholder="Apartment / landmark (optional)" className="auth-input-field" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="auth-input-group"><label className="auth-input-label">City *</label>
+                      <input required value={addressCity} onChange={(e) => setAddressCity(e.target.value)} className="auth-input-field" /></div>
+                    <div className="auth-input-group"><label className="auth-input-label">State *</label>
+                      <input required value={addressState} onChange={(e) => setAddressState(e.target.value)} className="auth-input-field" /></div>
+                    <div className="auth-input-group"><label className="auth-input-label">Country *</label>
+                      <input required value={addressCountry} onChange={(e) => setAddressCountry(e.target.value)} className="auth-input-field" /></div>
+                    <div className="auth-input-group"><label className="auth-input-label">Postal Code *</label>
+                      <input required value={addressPostalCode} onChange={(e) => setAddressPostalCode(e.target.value)} className="auth-input-field" /></div>
+                  </div>
                 </div>
               )}
 
@@ -1404,6 +1660,14 @@ export const Auth: React.FC<AuthProps> = ({
 
                       </div>
 
+                      <div className="auth-input-group mb-3">
+                        <label className="auth-input-label">Year of Admission *</label>
+                        <input type="number" required min="1950" max={new Date().getFullYear()}
+                          value={regYearOfAdmission}
+                          onChange={(e) => setRegYearOfAdmission(e.target.value)}
+                          placeholder="e.g. 2024" className="auth-input-field" />
+                      </div>
+
                       <div className="auth-input-group">
 
                         <label className="auth-input-label">
@@ -1432,22 +1696,19 @@ export const Auth: React.FC<AuthProps> = ({
                       <div className="auth-input-group">
 
                         <label className="auth-input-label">
-                          Resume Overview
+                          Public Resume URL *
                         </label>
 
                         <div className="auth-input-box">
 
-                          <textarea
-                            rows={2}
-                            value={regResume}
-                            onChange={(e) =>
-                              setRegResume(
-                                e.target.value
-                              )
-                            }
-                            placeholder="Brief summary of skills, experience and achievements..."
-                            className="auth-input-field resize-none w-full"
-                          />
+                            <input
+                              type="url"
+                              required
+                              value={regResume}
+                              onChange={(e) => setRegResume(e.target.value)}
+                              placeholder="https://drive.google.com/..."
+                              className="auth-input-field"
+                            />
 
                         </div>
                       </div>
@@ -1662,6 +1923,14 @@ export const Auth: React.FC<AuthProps> = ({
                           </div>
                         </div>
 
+                      </div>
+
+                      <div className="auth-input-group mb-3">
+                        <label className="auth-input-label">Existing Student Registration Number *</label>
+                        <input type="text" inputMode="numeric" maxLength={12} required value={alumniStudentRegnNo}
+                          onChange={(e) => setAlumniStudentRegnNo(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                          placeholder="12-digit registration number linked to your student record"
+                          className="auth-input-field" />
                       </div>
 
                       {/* Password + Graduation Year */}
@@ -2225,7 +2494,7 @@ export const Auth: React.FC<AuthProps> = ({
                               Recruiter Registration
                             </strong>
                             <p>
-                              Your registration will be submitted to the TPO for approval. You will only be able to access the Recruiter Portal after your account is approved by TPO.
+                              Your company must already exist in PlaceD. Your registration will be submitted to the TPO for approval. You will only be able to access the Recruiter Portal after your account is approved by TPO.
                             </p>
                           </div>
                         </div>

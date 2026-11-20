@@ -500,6 +500,8 @@ function AppContent() {
             (storedStudentId && (sIdKey === storedStudentId.toLowerCase().trim()) ? appsByStudent.get(storedStudentId.toLowerCase().trim()) : undefined) || [];
           return {
             id: s.id,
+            userId: s.userId,
+            yearOfAdmission: s.yearOfAdmission,
             name: s.name,
             email: s.email,
             phone: s.phone || '9876543210',
@@ -514,7 +516,7 @@ function AppContent() {
             resumeScore: 85,
             skills: [],
             projectsCount: 0,
-            resumeText: '',
+            resumeText: s.resumeUrl || '',
             applications: studentApps,
             department: s.department,
             emailVerified: s.emailVerified,
@@ -528,6 +530,8 @@ function AppContent() {
               const sIdKey = String(singleStudent.id).toLowerCase().trim();
               mappedStudents.push({
                 id: singleStudent.id,
+                userId: singleStudent.userId,
+                yearOfAdmission: singleStudent.yearOfAdmission,
                 name: singleStudent.name,
                 email: singleStudent.email,
                 phone: singleStudent.phone || '9876543210',
@@ -859,6 +863,7 @@ function AppContent() {
       }
     }
 
+    // Keep placed_device_id across sign-outs; only authentication/session data is cleared.
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('role');
@@ -1944,13 +1949,21 @@ function AppContent() {
           String(a.id) === String(id)
             ? {
                 ...a,
-                ...requestData,
-                linkedinUrl: requestData.linkedinUrl || requestData.linkedIn || a.linkedinUrl
+                bio: requestData.bio ?? a.bio,
+                location: requestData.location ?? a.location,
+                linkedinUrl: requestData.linkedinUrl ?? requestData.linkedIn ?? a.linkedinUrl,
+                githubUrl: requestData.githubUrl ?? a.githubUrl,
+                hashNodeUrl: requestData.hashNodeUrl ?? a.hashNodeUrl,
+                devToUrl: requestData.devToUrl ?? a.devToUrl,
               }
             : a
         )
       );
-      triggerToast('Alumni profile updated successfully.', 'success');
+      if (requestData.name || requestData.email) {
+        triggerToast('Bio, location, and profile links were saved. Name and email cannot be updated with the current backend DTO.', 'warning');
+      } else {
+        triggerToast('Alumni profile details updated successfully.', 'success');
+      }
     } catch (error) {
       console.error('Failed to update alumni profile:', error);
       triggerToast('Failed to update alumni profile.', 'error');

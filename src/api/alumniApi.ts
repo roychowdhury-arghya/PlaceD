@@ -8,6 +8,8 @@ export type BlogCategory =
 
 export interface Alumni {
   id: string;
+  userId?: number;
+  studentRegnNo?: string;
   name: string;
   email: string;
   password?: string;
@@ -130,41 +132,48 @@ export const alumniApi = {
     const res = await request<any[]>('/alumni/all');
     if (!Array.isArray(res)) return [];
 
-    return res.map((a: any) => ({
-      id: String(a.id),
-      name: a.name || '',
-      email: a.email || '',
-      bio: a.bio || '',
-      location: a.location || '',
-      linkedinUrl: a.linkedinUrl || a.linkedIn || '',
-      githubUrl: a.githubUrl || '',
-      hashNodeUrl: a.hashNodeUrl || '',
-      devToUrl: a.devToUrl || '',
-      graduationYear: a.graduationYear || 2024,
-      currentCompany: a.currentCompany || '',
-      currentRole: a.currentRole || '',
-      department: a.department || 'CSE',
-      linkedIn: a.linkedinUrl || a.linkedIn || '',
+    return Promise.all(res.map(async (a: any) => {
+      const user = a.userId ? await request<any>(`/user/${a.userId}`).catch(() => null) : null;
+      const nameData = user?.nameResponseDTO;
+      const name = nameData
+        ? [nameData.firstName, nameData.middleName, nameData.lastName].filter(Boolean).join(' ')
+        : '';
+      return {
+        id: String(a.id),
+        userId: a.userId,
+        studentRegnNo: a.studentRegnNo,
+        name,
+        email: user?.email || '',
+        bio: a.bio || '',
+        location: a.location || '',
+        linkedinUrl: a.linkedinUrl || '',
+        githubUrl: a.githubUrl || '',
+        hashNodeUrl: a.hashNodeUrl || '',
+        devToUrl: a.devToUrl || '',
+        linkedIn: a.linkedinUrl || '',
+      };
     }));
   },
 
   async getById(id: string | number): Promise<Alumni> {
     const a = await request<any>(`/alumni/${id}`);
-
+    const user = a.userId ? await request<any>(`/user/${a.userId}`).catch(() => null) : null;
+    const nameData = user?.nameResponseDTO;
+    const name = nameData
+      ? [nameData.firstName, nameData.middleName, nameData.lastName].filter(Boolean).join(' ')
+      : '';
     return {
       id: String(a.id),
-      name: a.name || '',
-      email: a.email || '',
+      userId: a.userId,
+      studentRegnNo: a.studentRegnNo,
+      name,
+      email: user?.email || '',
       bio: a.bio || '',
       location: a.location || '',
       linkedinUrl: a.linkedinUrl || '',
       githubUrl: a.githubUrl || '',
       hashNodeUrl: a.hashNodeUrl || '',
       devToUrl: a.devToUrl || '',
-      graduationYear: a.graduationYear || 2024,
-      currentCompany: a.currentCompany || '',
-      currentRole: a.currentRole || '',
-      department: a.department || 'CSE',
       linkedIn: a.linkedinUrl || '',
     };
   },
@@ -173,35 +182,28 @@ export const alumniApi = {
     // No-op: Data is maintained in PostgreSQL database
   },
 
-  async register(requestData: AlumniRegistrationRequest): Promise<any> {
-    await this.add(requestData);
-    return {
-      id: String(Date.now()),
-      name: requestData.name,
-      email: requestData.email,
-      department: requestData.department || 'Computer Science',
-      graduationYear: requestData.graduationYear || new Date().getFullYear(),
-      currentCompany: requestData.currentCompany || '',
-      currentRole: requestData.currentRole || '',
-      linkedIn: requestData.linkedIn || '',
-    };
+  async register(_requestData: AlumniRegistrationRequest): Promise<any> {
+    throw new Error('Alumni registration requires a base user account and an existing student registration number. Use the two-step registration flow in Auth.');
   },
 
-  async add(requestData: AlumniRegistrationRequest): Promise<any> {
+  async addDetails(requestData: {
+    userId: number;
+    studentRegnNo: string;
+    bio?: string;
+    location?: string;
+    linkedinUrl?: string;
+    githubUrl?: string;
+    hashNodeUrl?: string;
+    devToUrl?: string;
+  }): Promise<string> {
     return request<string>('/alumni/add', {
       method: 'POST',
-      body: JSON.stringify({
-        name: requestData.name,
-        email: requestData.email,
-        password: requestData.password || 'password',
-        bio: requestData.bio || requestData.currentRole || '',
-        location: requestData.location || '',
-        linkedinUrl: requestData.linkedinUrl || requestData.linkedIn || '',
-        githubUrl: requestData.githubUrl || '',
-        hashNodeUrl: requestData.hashNodeUrl || '',
-        devToUrl: requestData.devToUrl || ''
-      }),
+      body: JSON.stringify(requestData),
     });
+  },
+
+  async add(_requestData: AlumniRegistrationRequest): Promise<any> {
+    throw new Error('The backend AlumniRequestDTO requires userId and studentRegnNo. Use addDetails after creating the base user.');
   },
 
   async login(requestData: AlumniLoginRequest): Promise<any> {
@@ -318,43 +320,46 @@ export const alumniApi = {
   },
 
   async updateProfile(id: string | number, requestData: AlumniProfileRequest): Promise<any> {
-    const existing = await this.getById(id).catch(() => null);
-    const emailToUse = requestData.email || existing?.email || getCurrentUserEmail();
-
+    const existing = await this.getById(id);
+    if (!existing.userId || !existing.studentRegnNo) {
+      throw new Error('This alumni profile is missing its linked user or student record.');
+    }
+    const bio = requestData.bio ??
+      [requestData.currentRole, requestData.currentCompany,
+       requestData.graduationYear ? `Graduation year: ${requestData.graduationYear}` : '',
+       requestData.department ? `Department: ${requestData.department}` : '']
+        .filter(Boolean).join(' | ');
     return request<string>(`/alumni/update/${id}`, {
       method: 'PUT',
       body: JSON.stringify({
-        id: Number(id),
-        name: requestData.name || existing?.name || '',
-        email: emailToUse,
-        password: 'password',
-        bio: requestData.bio || requestData.currentRole || existing?.bio || '',
-        location: requestData.location || existing?.location || '',
-        linkedinUrl: requestData.linkedinUrl || requestData.linkedIn || existing?.linkedinUrl || '',
-        githubUrl: requestData.githubUrl || existing?.githubUrl || '',
-        hashNodeUrl: requestData.hashNodeUrl || existing?.hashNodeUrl || '',
-        devToUrl: requestData.devToUrl || existing?.devToUrl || ''
+        userId: existing.userId,
+        studentRegnNo: existing.studentRegnNo,
+        bio,
+        location: requestData.location ?? existing.location ?? '',
+        linkedinUrl: requestData.linkedinUrl ?? requestData.linkedIn ?? existing.linkedinUrl ?? '',
+        githubUrl: requestData.githubUrl ?? existing.githubUrl ?? '',
+        hashNodeUrl: requestData.hashNodeUrl ?? existing.hashNodeUrl ?? '',
+        devToUrl: requestData.devToUrl ?? existing.devToUrl ?? '',
       }),
     });
   },
 
   async update(id: string | number, requestData: Partial<Alumni>): Promise<any> {
-    const existing = await this.getById(id).catch(() => null);
-    const emailToUse = requestData.email || existing?.email || getCurrentUserEmail();
-
+    const existing = await this.getById(id);
+    if (!existing.userId || !existing.studentRegnNo) {
+      throw new Error('This alumni profile is missing its linked user or student record.');
+    }
     return request<string>(`/alumni/update/${id}`, {
       method: 'PUT',
       body: JSON.stringify({
-        id: Number(id),
-        name: requestData.name || existing?.name || '',
-        email: emailToUse,
-        password: 'password',
-        bio: requestData.bio || requestData.currentRole || existing?.bio || '',
-        location: requestData.location || existing?.location || '',
-        linkedinUrl: requestData.linkedinUrl || requestData.linkedIn || existing?.linkedinUrl || '',
-        githubUrl: requestData.githubUrl || existing?.githubUrl || '',
-        hashNodeUrl: requestData.hashNodeUrl || existing?.hashNodeUrl || '',
-        devToUrl: requestData.devToUrl || existing?.devToUrl || ''
+        userId: existing.userId,
+        studentRegnNo: existing.studentRegnNo,
+        bio: requestData.bio ?? existing.bio ?? '',
+        location: requestData.location ?? existing.location ?? '',
+        linkedinUrl: requestData.linkedinUrl ?? requestData.linkedIn ?? existing.linkedinUrl ?? '',
+        githubUrl: requestData.githubUrl ?? existing.githubUrl ?? '',
+        hashNodeUrl: requestData.hashNodeUrl ?? existing.hashNodeUrl ?? '',
+        devToUrl: requestData.devToUrl ?? existing.devToUrl ?? '',
       }),
     });
   },
