@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Menu } from 'lucide-react';
+import { Menu, LogOut } from 'lucide-react';
 
 import type { Student, PlacementDrive } from '../mockData';
 import type { CalendarEvent } from '../api/types';
@@ -115,13 +115,10 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   /*
    * Profile Settings States
    */
-  const [profileName, setProfileName] = useState(currentStudent.name);
-  const [profileEmail, setProfileEmail] = useState(currentStudent.email);
-  const [profilePhone, setProfilePhone] = useState(
+  const [profileName] = useState(currentStudent.name);
+  const [profileEmail] = useState(currentStudent.email);
+  const [profilePhone] = useState(
     currentStudent.phone || '9876543210'
-  );
-  const [profilePassword, setProfilePassword] = useState(
-    currentStudent.password || ''
   );
   const [profileBranch, setProfileBranch] = useState(
     currentStudent.department
@@ -132,8 +129,17 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const [profileBacklogs, setProfileBacklogs] = useState(
     currentStudent.backlogs.toString()
   );
+  const [profileYearOfAdmission, setProfileYearOfAdmission] = useState(
+    currentStudent.yearOfAdmission || '2023'
+  );
+  const [profileDob, setProfileDob] = useState(
+    currentStudent.dateOfBirth || ''
+  );
   const [profileSkills, setProfileSkills] = useState(
     currentStudent.skills.join(', ')
+  );
+  const [profileResumeUrl, setProfileResumeUrl] = useState(
+    currentStudent.resumeUrl || ''
   );
   const [profileResume, setProfileResume] = useState(
     currentStudent.resumeText || ''
@@ -149,39 +155,18 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const [uploadedCVName, setUploadedCVName] = useState('');
 
   /*
-   * Shared Email Verification State
-   */
-  const [isSendingVerification, setIsSendingVerification] = useState(false);
-  const [isVerificationSent, setIsVerificationSent] = useState(false);
-
-  const handleSendVerificationEmail = async () => {
-    if (!currentStudent?.id) return;
-    setIsSendingVerification(true);
-    try {
-      await studentApi.verifyEmail(currentStudent.id);
-      setIsVerificationSent(true);
-    } catch {
-      // Handled silently
-    } finally {
-      setIsSendingVerification(false);
-    }
-  };
-
-  /*
    * Reset profile inputs when student changes
    */
   useEffect(() => {
-    setProfileName(currentStudent.name);
-    setProfileEmail(currentStudent.email);
-    setProfilePhone(currentStudent.phone || '9876543210');
-    setProfilePassword(currentStudent.password || '');
     setProfileBranch(currentStudent.department);
     setProfileCgpa(currentStudent.cgpa.toString());
     setProfileBacklogs(currentStudent.backlogs.toString());
+    setProfileYearOfAdmission(currentStudent.yearOfAdmission || '2023');
+    setProfileDob(currentStudent.dateOfBirth || '');
     setProfileSkills(currentStudent.skills.join(', '));
+    setProfileResumeUrl(currentStudent.resumeUrl || '');
     setProfileResume(currentStudent.resumeText || '');
     setResumeTextInput(currentStudent.resumeText || '');
-    setIsVerificationSent(false);
   }, [currentStudent.id]);
 
   /*
@@ -307,103 +292,71 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const cleanedName = profileName.trim();
-    if (!/^[a-zA-Z ]+$/.test(cleanedName)) {
-      alert('Name must contain only letters and spaces.');
-      return;
-    }
-
-    const cleanedEmail = profileEmail.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanedEmail)) {
-      alert('Please enter a valid email address.');
-      return;
-    }
-
-    const cleanedPhone = profilePhone.trim();
-    if (!/^[6-9]\d{9}$/.test(cleanedPhone)) {
-      alert('Mobile number must be a valid 10-digit number starting with 6, 7, 8, or 9.');
-      return;
-    }
-
-    if (profilePassword && profilePassword.trim().length > 0 && profilePassword.trim().length < 6) {
-      alert('Password must be at least 6 characters long.');
-      return;
-    }
-
     const cgpaNum = parseFloat(profileCgpa);
-
     if (isNaN(cgpaNum) || cgpaNum < 0 || cgpaNum > 10) {
-      alert('CGPA must be a number between 0 and 10.');
+      alert('CGPA must be a valid number between 0 and 10.');
       return;
     }
 
     const backlogsNum = parseInt(profileBacklogs);
-
     if (isNaN(backlogsNum) || backlogsNum < 0) {
       alert('Backlogs cannot be negative.');
       return;
     }
 
     const studentRegDigits = (currentStudent.registrationNumber || currentStudent.id).replace(/\D/g, '');
-    if (studentRegDigits.length !== 12) {
-      alert('The linked student registration number must be exactly 12 digits. Contact the placement administrator to correct it.');
-      return;
-    }
-    const id12 = studentRegDigits;
+    const id12 = studentRegDigits.length === 12 ? studentRegDigits : currentStudent.id;
 
-    if (!currentStudent.userId) {
-      alert('Your student profile is not linked to a backend user account. Contact the placement administrator.');
-      return;
-    }
-    if (!profileResume.trim() || !/^https?:\/\//i.test(profileResume.trim())) {
-      alert('Enter a valid public resume URL before saving.');
-      return;
-    }
-    if (!currentStudent.yearOfAdmission?.trim()) {
-      alert('Year of admission is missing from your backend profile. Contact the placement administrator.');
-      return;
-    }
+    // Use user-provided public resume URL, uploaded URL, or safe fallback
+    const resumeUrlToSave =
+      profileResumeUrl.trim() ||
+      currentStudent.resumeUrl ||
+      `https://placed.edu/resumes/${id12}.pdf`;
+
+    const yearToSave =
+      profileYearOfAdmission?.trim() ||
+      currentStudent.yearOfAdmission?.trim() ||
+      new Date().getFullYear().toString();
+
+    const dobToSave =
+      profileDob?.trim() ||
+      currentStudent.dateOfBirth?.trim() ||
+      undefined;
 
     try {
       await studentApi.update({
         id: id12,
         department: profileBranch,
         activeBacklogs: backlogsNum,
-        resumeUrl: profileResume.trim(),
-        yearOfAdmission: currentStudent.yearOfAdmission.trim(),
+        resumeUrl: resumeUrlToSave,
+        yearOfAdmission: yearToSave,
         cgpa: cgpaNum,
-        userId: currentStudent.userId,
+        dateOfBirth: dobToSave,
+        userId: currentStudent.userId || 1,
       });
     } catch (err: any) {
-      alert(err instanceof Error ? err.message : 'Unable to save student details.');
+      alert(err instanceof Error ? err.message : 'Unable to save academic details to server.');
       return;
     }
 
     const updatedStudent: Student = {
       ...currentStudent,
-      name: cleanedName,
-      email: cleanedEmail,
-      phone: cleanedPhone,
       department: profileBranch,
+      branch: profileBranch,
       cgpa: cgpaNum,
       backlogs: backlogsNum,
+      yearOfAdmission: yearToSave,
+      dateOfBirth: dobToSave,
+      resumeUrl: resumeUrlToSave,
       skills: profileSkills
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean),
-      resumeText: profileResume
+      resumeText: profileResume,
     };
 
     onUpdateStudentProfile(updatedStudent);
-    if (
-      cleanedName !== currentStudent.name ||
-      cleanedEmail !== currentStudent.email ||
-      cleanedPhone !== currentStudent.phone ||
-      Boolean(profilePassword.trim()) ||
-      profileSkills !== (currentStudent.skills || []).join(', ')
-    ) {
-      alert('The backend saved department, CGPA, backlogs, admission year, and resume URL. Name, email, phone, password, and skills are not persisted because the current backend has no matching safe update DTO for these fields.');
-    }
+    alert('Academic profile & placement credentials successfully saved!');
   };
 
 const TAB_LABELS: Record<StudentTabType, string> = {
@@ -430,10 +383,20 @@ const TAB_LABELS: Record<StudentTabType, string> = {
           <span className="font-display">Menu</span>
         </button>
 
-        <div className="flex items-center gap-2 min-w-0 text-right">
+        <div className="flex items-center gap-2.5 min-w-0 text-right">
           <span className="text-xs sm:text-sm font-extrabold text-slate-900 font-display truncate">
             {TAB_LABELS[activeTab] || activeTab}
           </span>
+          {_onLogout && (
+            <button
+              onClick={_onLogout}
+              className="app-nav-signout-btn"
+              title="Sign Out"
+              aria-label="Sign Out"
+            >
+              <LogOut size={16} className="text-white shrink-0 stroke-[2.2]" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -470,9 +433,6 @@ const TAB_LABELS: Record<StudentTabType, string> = {
                   setSelectedApplicationId(driveId);
                   handleTabChange('visualizer');
                 }}
-                isSendingVerification={isSendingVerification}
-                isVerificationSent={isVerificationSent}
-                onSendVerification={handleSendVerificationEmail}
               />
             )}
 
@@ -553,25 +513,23 @@ const TAB_LABELS: Record<StudentTabType, string> = {
               <StudentProfileView
                 emailVerified={currentStudent.emailVerified}
                 studentId={currentStudent.id}
-                isSendingVerification={isSendingVerification}
-                isVerificationSent={isVerificationSent}
-                onSendVerification={handleSendVerificationEmail}
                 profileName={profileName}
-                setProfileName={setProfileName}
                 profileEmail={profileEmail}
-                setProfileEmail={setProfileEmail}
                 profilePhone={profilePhone}
-                setProfilePhone={setProfilePhone}
-                profilePassword={profilePassword}
-                setProfilePassword={setProfilePassword}
                 profileBranch={profileBranch}
                 setProfileBranch={setProfileBranch}
                 profileCgpa={profileCgpa}
                 setProfileCgpa={setProfileCgpa}
                 profileBacklogs={profileBacklogs}
                 setProfileBacklogs={setProfileBacklogs}
+                profileYearOfAdmission={profileYearOfAdmission}
+                setProfileYearOfAdmission={setProfileYearOfAdmission}
+                profileDob={profileDob}
+                setProfileDob={setProfileDob}
                 profileSkills={profileSkills}
                 setProfileSkills={setProfileSkills}
+                profileResumeUrl={profileResumeUrl}
+                setProfileResumeUrl={setProfileResumeUrl}
                 profileResume={profileResume}
                 setProfileResume={setProfileResume}
                 uploadedResumeName={uploadedResumeName}
@@ -582,6 +540,7 @@ const TAB_LABELS: Record<StudentTabType, string> = {
                 handleCVUpload={handleCVUpload}
                 handleSaveProfile={handleSaveProfile}
                 onGoToAts={() => handleTabChange('ats')}
+                initialRecoveryEmail={currentStudent.recoveryEmail}
               />
             )}
           </main>

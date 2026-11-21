@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   GraduationCap,
   Briefcase,
@@ -9,106 +9,28 @@ import {
   BookOpen,
   ArrowRight,
   TrendingUp,
-  Mail,
   CheckCircle2,
-  Loader2
 } from 'lucide-react';
 import type { Student } from '../../mockData';
 import type { StudentTabType } from './StudentSidebar';
-import { studentApi } from '../../api/studentApi';
 
 interface StudentDashboardViewProps {
   currentStudent: Student;
   setActiveTab: (tab: StudentTabType) => void;
   onTrackApplication: (driveId: string) => void;
-  isVerificationSent?: boolean;
-  isSendingVerification?: boolean;
-  onSendVerification?: () => void;
 }
 
 export const StudentDashboardView: React.FC<StudentDashboardViewProps> = ({
   currentStudent,
   setActiveTab,
   onTrackApplication,
-  isVerificationSent = false,
-  isSendingVerification = false,
-  onSendVerification
 }) => {
-  const [internalSending, setInternalSending] = useState(false);
-  const [internalSent, setInternalSent] = useState(false);
-
-  const sendingVerification = onSendVerification ? isSendingVerification : internalSending;
-  const verificationSent = onSendVerification ? isVerificationSent : internalSent;
-
-  const handleSendVerification = async () => {
-    if (onSendVerification) {
-      onSendVerification();
-      return;
-    }
-    if (!currentStudent?.id) return;
-    setInternalSending(true);
-    try {
-      await studentApi.verifyEmail(currentStudent.id);
-      setInternalSent(true);
-    } catch {
-      // Ignored
-    } finally {
-      setInternalSending(false);
-    }
-  };
-
   const totalApplied = currentStudent.applications.length;
   const isPlaced = currentStudent.placementStatus === 'Placed';
   const firstName = currentStudent.name.split(' ')[0];
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
-      {/* Email Verification Reminder Banner if unverified */}
-      {currentStudent.emailVerified === false && (
-        <div className="glass-card p-4 sm:p-5 rounded-2xl border border-amber-200 bg-amber-50/90 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-amber-100 text-amber-800 shrink-0">
-              <Mail size={22} />
-            </div>
-            <div>
-              <h4 className="text-sm font-extrabold text-amber-950 font-display">
-                Email Address Not Verified ({currentStudent.email})
-              </h4>
-              <p className="text-xs text-amber-800 mt-0.5">
-                Verify your email address to receive real-time placement notifications and event alerts.
-              </p>
-            </div>
-          </div>
-
-          <div className="shrink-0">
-            {verificationSent ? (
-              <div className="h-12 px-6 rounded-xl bg-emerald-100 text-emerald-800 font-extrabold text-sm flex items-center gap-2 border border-emerald-300/80 shadow-xs">
-                <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-                <span>Verification Link Sent! Check Inbox</span>
-              </div>
-            ) : (
-              <button
-                type="button"
-                disabled={sendingVerification}
-                onClick={handleSendVerification}
-                className="btn h-12 px-8 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-extrabold text-sm shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2.5 whitespace-nowrap border-0"
-              >
-                {sendingVerification ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin shrink-0" />
-                    <span>Sending Verification Email...</span>
-                  </>
-                ) : (
-                  <>
-                    <Mail size={18} className="shrink-0" />
-                    <span>Send Verification Link</span>
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
       {/* Welcoming Hero Banner */}
       <div className="glass-card p-6 sm:p-8 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-white shadow-xs flex flex-col gap-3">
         <div className="flex items-center justify-between gap-4 flex-wrap">

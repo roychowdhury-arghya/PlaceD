@@ -26,7 +26,7 @@ export const StudentMobileDrawer: React.FC<StudentMobileDrawerProps> = ({
   onClose,
   activeTab,
   setActiveTab,
-  currentStudent
+  currentStudent,
 }) => {
   if (!isOpen) return null;
 
@@ -134,8 +134,8 @@ export const StudentMobileDrawer: React.FC<StudentMobileDrawerProps> = ({
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 text-center">
-          <p className="text-[11px] font-semibold text-slate-400">PlaceD Campus Recruitment Suite</p>
+        <div className="p-4 border-t border-slate-100 bg-white shrink-0">
+          <p className="text-[11px] font-semibold text-slate-400 text-center">PlaceD Campus Recruitment Suite</p>
         </div>
       </div>
     </>

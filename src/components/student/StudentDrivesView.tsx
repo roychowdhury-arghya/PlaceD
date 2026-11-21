@@ -6,6 +6,7 @@ import { Briefcase, AlertCircle, Lock, Award, CheckCircle2, Globe, Loader2 } fro
 import type { Student, PlacementDrive } from '../../mockData';
 import { StudentOffCampusView } from './StudentOffCampusView';
 import { isOnCampusDrive, isOffCampusDrive, isActiveDrive } from '../../utils/driveFilters';
+import { isBranchMatch } from '../../api/jobPostingApi';
 
 interface StudentDrivesViewProps {
   currentStudent: Student;
@@ -105,17 +106,22 @@ export const StudentDrivesView: React.FC<StudentDrivesViewProps> = ({
     const cgpaCutoff = drive.cgpaCutoff ?? 0;
     const isGpaEligible = student.cgpa >= cgpaCutoff;
     const isBacklogEligible = student.backlogs <= (drive.maxBacklogs ?? 0);
-    const isBranchEligible = (drive.allowedBranches ?? []).includes(student.department);
+    const isBranchEligible = isBranchMatch(drive.allowedBranches, student.department);
     const eligible = isGpaEligible && isBacklogEligible && isBranchEligible;
 
     if (!eligible) {
+      const branchDisplay =
+        drive.allowedBranches && drive.allowedBranches.length > 0
+          ? drive.allowedBranches.join(', ')
+          : 'Computer Science, Information Technology, Electronics';
+
       return {
         eligible: false,
         score: 0,
         reasons: [
           !isGpaEligible && `GPA cut-off is ${cgpaCutoff} (yours: ${student.cgpa})`,
           !isBacklogEligible && `Max backlogs allowed is ${drive.maxBacklogs} (yours: ${student.backlogs})`,
-          !isBranchEligible && `Eligible branches: ${(drive.allowedBranches ?? []).join(', ')} (your branch: ${student.department})`
+          !isBranchEligible && `Eligible branches: ${branchDisplay} (your branch: ${student.department})`
         ].filter(Boolean) as string[]
       };
     }

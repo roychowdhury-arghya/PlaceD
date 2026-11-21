@@ -73,6 +73,9 @@ export interface Student {
 
   resumeFeedback?: ResumeFeedback;
   emailVerified?: boolean;
+  resumeUrl?: string;
+  dateOfBirth?: string;
+  recoveryEmail?: string;
 }
 
 export interface PlacementDrive {

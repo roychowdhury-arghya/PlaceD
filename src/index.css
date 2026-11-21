@@ -2678,6 +2678,39 @@ select.input-field option {
   box-shadow: 0 4px 12px hsl(var(--color-primary) / 20%);
 }
 
+.app-nav-signout-btn {
+  background: #DC2626 !important;
+  color: #ffffff !important;
+  border: none !important;
+  height: 42px !important;
+  min-width: 44px !important;
+  padding: 0 12px !important;
+  border-radius: 10px !important;
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  font-size: 0.88rem !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.28) !important;
+  transition: var(--transition-smooth) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+  text-decoration: none !important;
+  line-height: 1 !important;
+  flex-shrink: 0 !important;
+}
+
+.app-nav-signout-btn:hover {
+  background: #B91C1C !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 18px rgba(220, 38, 38, 0.38) !important;
+}
+
+.app-nav-signout-btn:active {
+  transform: translateY(0) !important;
+}
+
 .light .landing-navbar {
   background: rgba(238, 246, 252, 0.8) !important;
   /* Translucent Soft Blue-White */

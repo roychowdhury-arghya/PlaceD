@@ -81,8 +81,8 @@ export const studentApi = {
   getStageVisualizer: (id: string) =>
     request<StudentRoundVisualizerResponse[]>(`/students/stageVisualizer/${id}`),
 
-  verifyEmail: (id: string) =>
-    request<string>(`/user/${encodeURIComponent(id)}/verifyEmail`, {
+  verifyEmail: (id: string | number) =>
+    request<string>(`/user/${encodeURIComponent(String(id))}/verifyEmail`, {
       method: "POST",
     }),
 
@@ -102,7 +102,7 @@ export const studentApi = {
 
     const placedByStudent = new Map<string, ApplicationResponse>();
     for (const app of applications || []) {
-      if (app.status === "SHORTLISTED") {
+      if (app.status === "SELECTED") {
         placedByStudent.set(app.studentId, app);
       }
     }
@@ -129,7 +129,8 @@ export const studentApi = {
           : undefined,
         resumeScore: 0,
         projectsCount: 0,
-        resumeText: "",
+        resumeText: s.resumeUrl || "",
+        resumeUrl: s.resumeUrl || "",
         emailVerified: s.emailVerified,
       };
     });

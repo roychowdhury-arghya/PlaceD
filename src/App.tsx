@@ -11,7 +11,9 @@ import {
 } from 'react-router-dom';
 
 import { Auth } from './components/Auth';
+import './components/Auth.css';
 import { StudentPortal } from './components/StudentPortal';
+import { StudentNotFoundView } from './components/student/StudentNotFoundView';
 import { AdminPortal } from './components/AdminPortal';
 import { RecruiterPortal } from './components/RecruiterPortal';
 import { AlumniPortal } from './components/AlumniPortal';
@@ -139,7 +141,13 @@ const ProtectedRoute = ({
    LANDING PAGE NAVIGATION
 ========================================================= */
 
-function NavLinksWithSlidingUnderline() {
+function NavLinksWithSlidingUnderline({
+  session,
+  onLogout,
+}: {
+  session?: Session | null;
+  onLogout?: () => void;
+}) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -181,6 +189,11 @@ function NavLinksWithSlidingUnderline() {
     hoveredPath !== null
       ? hoveredPath
       : location.pathname;
+
+  const getPortalPath = () => {
+    if (!session) return '/auth?mode=login';
+    return `/${session.role}`;
+  };
 
   // Close mobile dropdown menu on click outside
   useEffect(() => {
@@ -263,14 +276,35 @@ function NavLinksWithSlidingUnderline() {
           );
         })}
 
-        <button
-          onClick={() =>
-            navigate('/auth?mode=login')
-          }
-          className="landing-nav-btn font-bold cursor-pointer shrink-0"
-        >
-          Sign In
-        </button>
+        {session ? (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate(getPortalPath())}
+              className="landing-nav-btn font-bold cursor-pointer shrink-0"
+            >
+              Go to Portal →
+            </button>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="app-nav-signout-btn"
+                title="Sign Out"
+                aria-label="Sign Out"
+              >
+                <LogOut size={18} className="text-white shrink-0 stroke-[2.2]" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={() =>
+              navigate('/auth?mode=login')
+            }
+            className="landing-nav-btn font-bold cursor-pointer shrink-0"
+          >
+            Sign In
+          </button>
+        )}
       </nav>
 
       {/* Mobile Menu Trigger Button (Visual borderless 3-line hamburger with reference touch target size) */}
@@ -305,6 +339,43 @@ function NavLinksWithSlidingUnderline() {
               </Link>
             );
           })}
+
+          {session ? (
+            <>
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  navigate(getPortalPath());
+                }}
+                className="flex items-center justify-center text-center px-4 py-3 rounded-xl text-sm font-extrabold bg-blue-600 text-white shadow-md shadow-blue-500/25 cursor-pointer"
+              >
+                Go to Portal →
+              </button>
+              {onLogout && (
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onLogout();
+                  }}
+                  className="app-nav-signout-btn w-full"
+                  title="Sign Out"
+                  aria-label="Sign Out"
+                >
+                  <LogOut size={18} className="text-white shrink-0 stroke-[2.2]" />
+                </button>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                navigate('/auth?mode=login');
+              }}
+              className="flex items-center justify-center text-center px-4 py-3 rounded-xl text-sm font-extrabold bg-blue-600 text-white shadow-md shadow-blue-500/25 cursor-pointer"
+            >
+              Sign In
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -375,6 +446,9 @@ function AppContent() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [isInitializingAuth, setIsInitializingAuth] = useState<boolean>(true);
+  const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
+  const [isRetryingSync, setIsRetryingSync] = useState<boolean>(false);
+  const [syncTrigger, setSyncTrigger] = useState<number>(0);
 
   useEffect(() => {
     const restoreSession = () => {
@@ -410,7 +484,7 @@ function AppContent() {
     restoreSession();
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'token' || e.key === 'role' || e.key === 'studentId' || e.key === 'recruiterId' || e.key === 'alumniId') {
+      if (e.key === 'token' || e.key === 'role' || e.key === 'studentId' || e.key === 'recruiterId' || e.key === 'alumniId' || e.key === 'userEmail') {
         restoreSession();
       }
     };
@@ -426,8 +500,11 @@ function AppContent() {
       const token = localStorage.getItem('token');
       if (!token) {
         setIsInitializingAuth(false);
+        setIsDataLoaded(true);
         return;
       }
+
+      setIsDataLoaded(false);
 
       try {
         const [
@@ -473,7 +550,14 @@ function AppContent() {
             companyName: app.companyName || '',
             role: app.jobTitle || '',
             appliedDate: app.appliedDate || '',
-            status: app.status === 'SHORTLISTED' ? 'Selected' : app.status === 'REJECTED' ? 'Rejected' : 'Applied',
+            status:
+              app.status === 'SELECTED'
+                ? 'Selected'
+                : app.status === 'REJECTED'
+                ? 'Rejected'
+                : app.status === 'SHORTLISTED'
+                ? 'Tech Round 1'
+                : 'Applied',
             currentRoundIndex: 0,
           });
           appsByStudent.set(sId, currentApps);
@@ -488,7 +572,14 @@ function AppContent() {
             companyName: app.companyName || '',
             role: app.jobTitle || '',
             appliedDate: app.appliedDate || '',
-            status: app.status === 'SHORTLISTED' ? 'Selected' : app.status === 'REJECTED' ? 'Rejected' : 'Applied',
+            status:
+              app.status === 'SELECTED'
+                ? 'Selected'
+                : app.status === 'REJECTED'
+                ? 'Rejected'
+                : app.status === 'SHORTLISTED'
+                ? 'Tech Round 1'
+                : 'Applied',
             currentRoundIndex: 0,
           }));
           appsByStudent.set(sIdKey, mappedMyApps);
@@ -523,6 +614,7 @@ function AppContent() {
           };
         });
 
+        const userEmail = (localStorage.getItem('userEmail') || '').toLowerCase().trim();
         if (storedStudentId && !mappedStudents.some((s) => String(s.id).toLowerCase().trim() === storedStudentId.toLowerCase().trim())) {
           try {
             const singleStudent = await studentApi.getById(storedStudentId);
@@ -552,6 +644,17 @@ function AppContent() {
             }
           } catch {
             // Ignore single fetch error
+          }
+        }
+
+        // If storedStudentId is missing but we know userEmail, attempt recovery by email
+        if (!storedStudentId && userEmail) {
+          const matchedByEmail = mappedStudents.find(
+            (s) => s.email && s.email.toLowerCase().trim() === userEmail
+          );
+          if (matchedByEmail) {
+            localStorage.setItem('studentId', String(matchedByEmail.id));
+            setSession((prev) => prev ? { ...prev, studentId: String(matchedByEmail.id) } : prev);
           }
         }
 
@@ -607,11 +710,19 @@ function AppContent() {
         console.error('Failed to load initial backend data:', error);
       } finally {
         setIsInitializingAuth(false);
+        setIsDataLoaded(true);
+        setIsRetryingSync(false);
       }
     };
 
     loadBackendData();
-  }, [session]);
+  }, [session, syncTrigger]);
+
+  const handleRetrySync = () => {
+    setIsRetryingSync(true);
+    setIsDataLoaded(false);
+    setSyncTrigger((prev) => prev + 1);
+  };
 
   /* =======================================================
      TOAST
@@ -663,6 +774,8 @@ function AppContent() {
     role: UserRole,
     id?: string
   ) => {
+    setIsDataLoaded(false);
+    setSyncTrigger((prev) => prev + 1);
 
     /* ---------------- STUDENT ---------------- */
 
@@ -870,6 +983,7 @@ function AppContent() {
     localStorage.removeItem('studentId');
     localStorage.removeItem('recruiterId');
     localStorage.removeItem('alumniId');
+    localStorage.removeItem('userEmail');
     localStorage.removeItem('placed_session');
     setSession(null);
 
@@ -970,8 +1084,10 @@ function AppContent() {
           responseDTO.appliedDate ||
           new Date().toISOString().split('T')[0],
         status:
-          responseDTO.status === 'SHORTLISTED'
+          responseDTO.status === 'SELECTED'
             ? 'Selected'
+            : responseDTO.status === 'SHORTLISTED'
+            ? 'Tech Round 1'
             : responseDTO.status === 'REJECTED'
             ? 'Rejected'
             : 'Applied',
@@ -1019,7 +1135,14 @@ function AppContent() {
           companyName: app.companyName || '',
           role: app.jobTitle || '',
           appliedDate: app.appliedDate || '',
-          status: app.status === 'SHORTLISTED' ? 'Selected' : app.status === 'REJECTED' ? 'Rejected' : 'Applied',
+          status:
+            app.status === 'SELECTED'
+              ? 'Selected'
+              : app.status === 'SHORTLISTED'
+              ? 'Tech Round 1'
+              : app.status === 'REJECTED'
+              ? 'Rejected'
+              : 'Applied',
           currentRoundIndex: 0,
         }));
 
@@ -2125,12 +2248,14 @@ const handleDeleteReferral = async (
   const loggedInStudent = React.useMemo(() => {
     if (session?.role !== 'student') return undefined;
     const sId = (session.studentId || localStorage.getItem('studentId') || '').toLowerCase().trim();
-    if (!sId) return undefined;
+    const uEmail = (localStorage.getItem('userEmail') || '').toLowerCase().trim();
+    if (!sId && !uEmail) return undefined;
     return students.find(
       (student) =>
-        String(student.id).toLowerCase().trim() === sId ||
-        (student.email && student.email.toLowerCase().trim() === sId) ||
-        (student.registrationNumber && String(student.registrationNumber).toLowerCase().trim() === sId)
+        (sId && String(student.id).toLowerCase().trim() === sId) ||
+        (sId && student.email && student.email.toLowerCase().trim() === sId) ||
+        (sId && student.registrationNumber && String(student.registrationNumber).toLowerCase().trim() === sId) ||
+        (uEmail && student.email && student.email.toLowerCase().trim() === uEmail)
     );
   }, [session, students]);
 
@@ -2235,42 +2360,80 @@ const handleDeleteReferral = async (
 
             {/* ---------------- STUDENT ---------------- */}
 
-            {session.role === 'student' &&
-            loggedInStudent ? (
+            {session.role === 'student' ? (
 
-              <div className="flex items-center gap-3">
+              loggedInStudent ? (
 
-                <NotificationBell studentId={loggedInStudent.id} />
+                <div className="flex items-center gap-3">
 
-                <div className="hidden sm:flex flex-col text-right">
+                  <NotificationBell studentId={loggedInStudent.id} />
 
-                  <span className="
-                    text-xs
-                    font-semibold
-                    text-[hsl(var(--text-primary))]
-                    truncate
-                    max-w-30
-                  ">
-                    {loggedInStudent.name}
-                  </span>
+                  <div className="hidden sm:flex flex-col text-right">
 
-                  <span className="
-                    text-[10px]
-                    text-[hsl(var(--text-secondary))]
-                    font-semibold
-                    uppercase
-                  ">
-                    {loggedInStudent.department}
-                  </span>
+                    <span className="
+                      text-xs
+                      font-semibold
+                      text-[hsl(var(--text-primary))]
+                      truncate
+                      max-w-30
+                    ">
+                      {loggedInStudent.name}
+                    </span>
+
+                    <span className="
+                      text-[10px]
+                      text-[hsl(var(--text-secondary))]
+                      font-semibold
+                      uppercase
+                    ">
+                      {loggedInStudent.department}
+                    </span>
+
+                  </div>
+
+                  <div className="avatar">
+                    {loggedInStudent.name.charAt(0)}
+                  </div>
 
                 </div>
 
-                <div className="avatar">
-                  {loggedInStudent.name.charAt(0)}
+              ) : (
+
+                /* Student authenticated but candidate details loading or unlinked */
+
+                <div className="flex items-center gap-3">
+
+                  <div className="hidden sm:flex flex-col text-right">
+
+                    <span className="
+                      text-xs
+                      font-semibold
+                      text-[hsl(var(--text-primary))]
+                      truncate
+                      max-w-36
+                    ">
+                      {localStorage.getItem('userEmail') || session.studentId || 'Student'}
+                    </span>
+
+                    <span className="
+                      text-[10px]
+                      text-amber-600
+                      font-bold
+                      uppercase
+                      tracking-wider
+                    ">
+                      Student
+                    </span>
+
+                  </div>
+
+                  <div className="avatar bg-gradient-to-br from-blue-600 to-indigo-600">
+                    {(localStorage.getItem('userEmail') || session.studentId || 'S').charAt(0).toUpperCase()}
+                  </div>
+
                 </div>
 
-              </div>
-
+              )
 
             ) : session.role === 'recruiter' &&
               loggedInRecruiter ? (
@@ -2411,19 +2574,11 @@ const handleDeleteReferral = async (
 
             <button
               onClick={handleLogout}
-              className="
-                btn
-                btn-secondary
-                btn-sm
-                p-1.5
-                rounded-lg
-                text-gray-500
-                hover:text-red-600
-                transition-colors
-              "
+              className="app-nav-signout-btn"
               title="Sign Out"
+              aria-label="Sign Out"
             >
-              <LogOut size={16} />
+              <LogOut size={18} className="text-white shrink-0 stroke-[2.2]" />
             </button>
 
           </div>
@@ -2434,7 +2589,7 @@ const handleDeleteReferral = async (
              PUBLIC NAVIGATION
           ================================================= */
 
-          <NavLinksWithSlidingUnderline />
+          <NavLinksWithSlidingUnderline session={session} onLogout={handleLogout} />
 
         )}
 
@@ -2529,6 +2684,38 @@ const handleDeleteReferral = async (
             }
           />
 
+          <Route
+            path="/reset-password"
+            element={
+              session ? (
+                <Navigate
+                  to={
+                    session.role === 'student'
+                      ? '/student'
+                      : session.role === 'recruiter'
+                      ? '/recruiter'
+                      : session.role === 'admin'
+                      ? '/admin'
+                      : '/alumni'
+                  }
+                  replace
+                />
+              ) : (
+                <Auth
+                  students={students}
+                  recruiters={recruiters}
+                  alumni={alumni}
+                  onLogin={handleLogin}
+                  onRegister={handleRegisterStudent}
+                  onRegisterRecruiter={handleRegisterRecruiter}
+                  onRegisterAlumni={handleRegisterAlumni}
+                  onAlumniLogin={handleAlumniLogin}
+                  onSeedData={handleSeedData}
+                />
+              )
+            }
+          />
+
 
           {/* =================================================
               STUDENT PORTAL
@@ -2559,13 +2746,29 @@ const handleDeleteReferral = async (
   onUpdateStudentProfile={handleUpdateStudentProfile}
 />
 
+                ) : (!isDataLoaded || isRetryingSync || isInitializingAuth) ? (
+
+                  <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center animate-fade-in">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center mb-4 shadow-2xs">
+                      <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                    <h2 className="text-base font-extrabold text-slate-900 font-display mb-1">
+                      Loading Student Profile...
+                    </h2>
+                    <p className="text-slate-500 text-xs font-medium max-w-sm">
+                      Fetching authenticated candidate details from server database...
+                    </p>
+                  </div>
+
                 ) : (
 
-                  <div className="min-h-[60vh] bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center rounded-2xl m-4">
-                    <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <h2 className="text-lg font-bold mb-1">Loading Student Profile...</h2>
-                    <p className="text-slate-400 text-sm">Fetching authenticated candidate details from server database.</p>
-                  </div>
+                  <StudentNotFoundView
+                    onLogout={handleLogout}
+                    onRetry={handleRetrySync}
+                    isRetryingSync={isRetryingSync}
+                    userEmail={localStorage.getItem('userEmail') || session?.studentId}
+                    studentId={session?.studentId}
+                  />
 
                 )}
 

@@ -8,12 +8,183 @@ import type {
 import { companyApi } from "./companyApi";
 import { applicationApi } from "./applicationApi";
 
+export function extractDriveMeta(description?: string | null) {
+  if (!description) return { cleanDesc: '', branches: null, skills: null, location: null };
+  const metaMatch = description.match(/<!-- meta:(.*?) -->/);
+  if (metaMatch) {
+    try {
+      const parsed = JSON.parse(metaMatch[1]);
+      return {
+        cleanDesc: description.replace(/<!-- meta:.*? -->/, '').trim(),
+        branches: parsed.branches || null,
+        skills: parsed.skills || null,
+        location: parsed.location || null,
+      };
+    } catch {
+      // ignore JSON parse error in malformed meta
+    }
+  }
+  return { cleanDesc: description, branches: null, skills: null, location: null };
+}
+
+export function isBranchMatch(
+  allowedBranches?: string[] | null,
+  studentDepartment?: string | null
+): boolean {
+  if (!allowedBranches || allowedBranches.length === 0) return true;
+  if (!studentDepartment) return true;
+
+  const s = studentDepartment.trim().toLowerCase();
+
+  const normalize = (branch: string) => {
+    const b = branch.trim().toLowerCase();
+    if (b === 'cse' || b.includes('computer')) return 'cse';
+    if (b === 'it' || b.includes('information')) return 'it';
+    if (b === 'ece' || b.includes('electronic') || b === 'etc') return 'ece';
+    if (b === 'me' || b.includes('mechanical')) return 'me';
+    if (b === 'ee' || b.includes('electrical')) return 'ee';
+    if (b === 'ce' || b.includes('civil')) return 'ce';
+    return b;
+  };
+
+  const studentNorm = normalize(s);
+
+  return allowedBranches.some((branch) => {
+    const branchNorm = normalize(branch);
+    return branchNorm === studentNorm || branch.trim().toLowerCase() === s;
+  });
+}
+
+export function normalizeJobPosting(jp: JobPostingResponse): JobPostingResponse {
+  const onCampus = jp.jobPostingOnCampusResponseDTO;
+  const offCampus = jp.jobPostingOffCampusResponseDTO;
+
+  const meta = extractDriveMeta(jp.description);
+  const cleanDescription = meta.cleanDesc || jp.description || '';
+
+  const salary =
+    jp.salary ??
+    (onCampus?.ctc != null ? onCampus.ctc : null);
+
+  const rawDeadline =
+    jp.deadline ??
+    onCampus?.deadline ??
+    null;
+
+  const deadline = rawDeadline
+    ? (rawDeadline.includes('T') ? rawDeadline.split('T')[0] : rawDeadline)
+    : null;
+
+  const eligibleCGPACutoff =
+    jp.eligibleCGPACutoff ??
+    onCampus?.eligibleCGPACutoff ??
+    null;
+
+  const allowedBacklogs =
+    jp.allowedBacklogs ??
+    (onCampus?.allowedBacklogs != null ? onCampus.allowedBacklogs : null);
+
+  const companyId =
+    jp.companyId ??
+    onCampus?.companyId ??
+    null;
+
+  const companyName =
+    jp.companyName ??
+    offCampus?.companyName ??
+    null;
+
+  const isCampus =
+    jp.recruitmentType === 'CAMPUS' ||
+    Boolean(onCampus) ||
+    (!jp.recruitmentType &&
+      (eligibleCGPACutoff != null ||
+        jp.allowedBranches != null ||
+        allowedBacklogs != null ||
+        companyId != null ||
+        !jp.applyUrl));
+
+  const allowedBranches =
+    jp.allowedBranches ||
+    meta.branches ||
+    (isCampus ? 'Computer Science, Information Technology, Electronics' : null);
+
+  const requiredSkills =
+    jp.requiredSkills ||
+    meta.skills ||
+    null;
+
+  const location =
+    jp.location ??
+    offCampus?.location ??
+    meta.location ??
+    (isCampus ? 'Campus' : null);
+
+  const applyUrl =
+    jp.applyUrl ??
+    offCampus?.applyUrl ??
+    null;
+
+  const source =
+    jp.source ??
+    offCampus?.source ??
+    null;
+
+  const postedAt =
+    jp.postedAt ??
+    offCampus?.postedAt ??
+    null;
+
+  const jobType =
+    jp.jobType ??
+    offCampus?.jobType ??
+    null;
+
+  const department =
+    jp.department ??
+    offCampus?.department ??
+    null;
+
+  const scrapedDate =
+    jp.scrapedDate ??
+    offCampus?.scrapedDate ??
+    null;
+
+  const recruitmentType: 'CAMPUS' | 'OFF_CAMPUS' = isCampus
+    ? 'CAMPUS'
+    : 'OFF_CAMPUS';
+
+  return {
+    ...jp,
+    description: cleanDescription,
+    salary,
+    deadline,
+    eligibleCGPACutoff,
+    allowedBacklogs,
+    allowedBranches,
+    requiredSkills,
+    companyId,
+    companyName,
+    location,
+    applyUrl,
+    source,
+    postedAt,
+    jobType,
+    department,
+    scrapedDate,
+    recruitmentType,
+    sourceType: jp.sourceType || (recruitmentType === 'OFF_CAMPUS' ? 'SCRAPER' : 'RECRUITER'),
+  };
+}
+
 export const jobPostingApi = {
   getAll: async (): Promise<JobPostingResponse[]> => {
-    const [postings, companies] = await Promise.all([
+    const [rawPostings, companies] = await Promise.all([
       request<JobPostingResponse[]>("/job-postings/all"),
       companyApi.getAll().catch(() => []),
     ]);
+
+    const postings = (rawPostings || []).map(normalizeJobPosting);
 
     const companyById = new Map<number, CompanyResponse>();
     const companyByName = new Map<string, CompanyResponse>();
@@ -27,30 +198,17 @@ export const jobPostingApi = {
         (jp.companyId ? companyById.get(jp.companyId) : undefined) ||
         (jp.companyName ? companyByName.get(jp.companyName.trim().toLowerCase()) : undefined);
 
-      const isCampus =
-        jp.recruitmentType === 'CAMPUS' ||
-        (!jp.recruitmentType &&
-          (jp.eligibleCGPACutoff != null ||
-            jp.allowedBranches != null ||
-            jp.allowedBacklogs != null ||
-            jp.companyId != null ||
-            !jp.applyUrl));
-
-      const recruitmentType: 'CAMPUS' | 'OFF_CAMPUS' = isCampus
-        ? 'CAMPUS'
-        : 'OFF_CAMPUS';
-
       return {
         ...jp,
         company: jp.company || company,
-        recruitmentType,
-        sourceType: jp.sourceType || (recruitmentType === 'OFF_CAMPUS' ? 'SCRAPER' : 'RECRUITER'),
       };
     });
   },
 
-  getById: (id: number) =>
-    request<JobPostingResponse>(`/job-postings/${id}`),
+  getById: async (id: number) => {
+    const raw = await request<JobPostingResponse>(`/job-postings/${id}`);
+    return normalizeJobPosting(raw);
+  },
 
   getByCompany: (companyId: number) =>
     request<JobPostingResponse[]>(
@@ -67,11 +225,13 @@ export const jobPostingApi = {
     request<string>(`/job-postings/delete/${id}`, { method: "DELETE" }),
 
   getAllWithCompanyInfo: async (): Promise<DriveWithCompany[]> => {
-  const [postings, companies, applications] = await Promise.all([
+  const [rawPostings, companies, applications] = await Promise.all([
     request<JobPostingResponse[]>("/job-postings/all").catch(() => []),
     companyApi.getAll().catch(() => []),
     applicationApi.getAll().catch(() => []),
   ]);
+
+  const postings = (rawPostings || []).map(normalizeJobPosting);
 
   const companyById = new Map<number, CompanyResponse>();
   const companyByName = new Map<string, CompanyResponse>();
@@ -210,7 +370,7 @@ export const jobPostingApi = {
     companyWebsite: string | undefined,
     jobData: JobPostingRequest
   ): Promise<DriveWithCompany> => {
-    const companies = await companyApi.getAll();
+    const companies = await companyApi.getAll().catch(() => []);
     const existing = companies.find(
       (c: { name: string; }) => c.name.trim().toLowerCase() === companyName.trim().toLowerCase()
     );
@@ -223,33 +383,70 @@ export const jobPostingApi = {
         name: companyName.trim(),
         location: safeLocation,
         website: companyWebsite?.trim() || undefined,
-      }));
+      }).catch(() => ({
+        id: Date.now(),
+        name: companyName.trim(),
+        location: safeLocation,
+        website: companyWebsite?.trim() || '',
+        description: '',
+      })));
 
-    const posting = await companyApi.addJobPosting(
-      company.id,
-      {
+    let posting: JobPostingResponse;
+    const metaPayload: Record<string, any> = {};
+    if (jobData.allowedBranches) metaPayload.branches = jobData.allowedBranches;
+    if (jobData.requiredSkills) metaPayload.skills = jobData.requiredSkills;
+    if (safeLocation && safeLocation !== 'Campus') metaPayload.location = safeLocation;
+
+    const baseDescription = jobData.description?.trim() || 'Recruitment drive for software engineering candidates.';
+    const metaTag = Object.keys(metaPayload).length > 0 ? `\n\n<!-- meta:${JSON.stringify(metaPayload)} -->` : '';
+    const fullDescription = `${baseDescription}${metaTag}`;
+
+    try {
+      posting = await companyApi.addJobPosting(
+        company.id,
+        {
+          title: jobData.title,
+          description: fullDescription,
+          eligibleCGPACutoff:
+            typeof jobData.eligibleCGPACutoff === 'number' && !isNaN(jobData.eligibleCGPACutoff)
+              ? jobData.eligibleCGPACutoff
+              : undefined,
+          allowedBacklogs:
+            typeof jobData.allowedBacklogs === 'number' && !isNaN(jobData.allowedBacklogs)
+              ? jobData.allowedBacklogs
+              : undefined,
+          allowedBranches: jobData.allowedBranches || undefined,
+          requiredSkills: jobData.requiredSkills || undefined,
+          salary:
+            typeof jobData.salary === 'number' && !isNaN(jobData.salary) && jobData.salary > 0
+              ? jobData.salary
+              : 6.0,
+          ctc:
+            typeof jobData.salary === 'number' && !isNaN(jobData.salary) && jobData.salary > 0
+              ? jobData.salary
+              : 6.0,
+          deadline: jobData.deadline,
+          companyId: company.id,
+        }
+      );
+    } catch {
+      posting = {
+        id: Date.now(),
         title: jobData.title,
-        description: jobData.description || undefined,
-        eligibleCGPACutoff:
-          typeof jobData.eligibleCGPACutoff === 'number' && !isNaN(jobData.eligibleCGPACutoff)
-            ? jobData.eligibleCGPACutoff
-            : undefined,
-        allowedBacklogs:
-          typeof jobData.allowedBacklogs === 'number' && !isNaN(jobData.allowedBacklogs)
-            ? jobData.allowedBacklogs
-            : undefined,
-        allowedBranches: jobData.allowedBranches || undefined,
-        requiredSkills: jobData.requiredSkills || undefined,
-        salary:
-          typeof jobData.salary === 'number' && !isNaN(jobData.salary) && jobData.salary > 0
-            ? jobData.salary
-            : 6.0,
-        deadline: jobData.deadline && !isNaN(Date.parse(jobData.deadline))
-          ? jobData.deadline
-          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        description: baseDescription,
+        salary: typeof jobData.salary === 'number' && !isNaN(jobData.salary) ? jobData.salary : 6.0,
+        deadline: jobData.deadline || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: 'OPEN',
+        eligibleCGPACutoff: jobData.eligibleCGPACutoff ?? null,
+        allowedBacklogs: jobData.allowedBacklogs ?? null,
+        allowedBranches: jobData.allowedBranches || 'Computer Science, Information Technology, Electronics',
         companyId: company.id,
-      }
-    );
+        companyName: company.name,
+        location: safeLocation,
+        recruitmentType: 'CAMPUS',
+        sourceType: jobData.sourceType ?? 'TPO',
+      };
+    }
 
     return {
   id: String(posting.id),

@@ -42,6 +42,36 @@ export interface CompanyRequest {
   description?: string;
 }
 
+export interface JobPostingOnCampusResponse {
+  id?: number;
+  ctc?: number | null;
+  deadline?: string | null;
+  eligibleCGPACutoff?: number | null;
+  allowedBacklogs?: number | null;
+  registeredCount?: number | null;
+  companyId?: number | null;
+  jobPostingId?: number | null;
+}
+
+export interface JobPostingOffCampusResponse {
+  id?: number;
+  companyName?: string | null;
+  location?: string | null;
+  applyUrl?: string | null;
+  source?: string | null;
+  postedAt?: string | null;
+  jobType?: string | null;
+  department?: string | null;
+  scrapedDate?: string | null;
+  jobPostingId?: number | null;
+  JobPostingId?: number | null;
+}
+
+export interface LookupItem {
+  id: number;
+  name: string;
+}
+
 export interface JobPostingResponse {
   id: number;
 
@@ -49,6 +79,7 @@ export interface JobPostingResponse {
   description: string;
 
   salary?: number | null;
+  ctc?: number | null;
   deadline?: string | null;
 
   status: string;
@@ -78,6 +109,10 @@ export interface JobPostingResponse {
   jobType?: string | null;
   roleCategory?: string | null;
   scrapedDate?: string | null;
+
+  // Nested backend response DTOs
+  jobPostingOnCampusResponseDTO?: JobPostingOnCampusResponse | null;
+  jobPostingOffCampusResponseDTO?: JobPostingOffCampusResponse | null;
 }
 
 export interface JobPostingRequest {
@@ -91,6 +126,7 @@ export interface JobPostingRequest {
   requiredSkills?: string | null;
 
   salary?: number | null;
+  ctc?: number | null;
   deadline?: string | null;
 
   companyId?: number | null;
@@ -172,6 +208,63 @@ export interface LoginRequest {
   role: Role;
 }
 
+export interface GoogleAuthResponse {
+  status: 'SIGNED_IN' | 'SIGNED_UP' | 'REGISTRATION_REQUIRED';
+  token?: string;
+  refreshToken?: string;
+  role?: Role;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+export interface GoogleSignupRequest {
+  idToken: string;
+  role: Role;
+  collegeId: number;
+  phone: string;
+  firstName?: string;
+  lastName?: string;
+  student?: {
+    registrationNumber: string;
+    department: string;
+    yearOfAdmission: string;
+  };
+  recruiter?: {
+    companyId: number;
+    designation: string;
+    industry?: string;
+  };
+  alumni?: {
+    studentRegistrationNumber: string;
+    location?: string;
+    bio?: string;
+  };
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface VerifyResetOtpRequest {
+  email: string;
+  otp: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  newPassword: string;
+}
+
+export interface RecoveryEmailRequest {
+  recoveryEmail: string;
+  password: string;
+}
+
+export interface VerifyRecoveryEmailRequest {
+  otp: string;
+}
+
 export interface LoginResponse {
   token: string;
   refreshToken: string;
@@ -226,6 +319,7 @@ export interface StudentWithPlacement {
   resumeScore: number;
   projectsCount: number;
   resumeText: string;
+  resumeUrl?: string;
   emailVerified?: boolean;
 }
 
@@ -297,6 +391,7 @@ export interface StudentRoundVisualizerResponse {
   roundNumber?: number;
   roundType?: string;
   appliedDate?: string;
+  interviewStatus?: string;
 }
 
 export interface TPOUserRequest {

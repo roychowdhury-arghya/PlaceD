@@ -37,7 +37,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
   setActiveTab,
   isExpanded,
   onToggleExpand,
-  currentStudent
+  currentStudent,
 }) => {
   const [hoveredItem, setHoveredItem] = useState<{ id: string; label: string; y: number } | null>(null);
 

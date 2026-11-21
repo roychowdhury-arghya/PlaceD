@@ -85,8 +85,14 @@ export const StudentVisualizerView: React.FC<StudentVisualizerViewProps> = ({
     }
   }, [selectedApplicationId, currentStudent.applications, setSelectedApplicationId]);
 
-  // Round pipeline definitions
-  const rounds = selectedDrive?.rounds && selectedDrive.rounds.length > 0
+  // Round pipeline definitions (prioritize real backend interview rounds)
+  const realRounds = (activeRealVisualizer || [])
+    .filter((v) => Boolean(v.roundType))
+    .sort((a, b) => (a.roundNumber ?? 0) - (b.roundNumber ?? 0));
+
+  const rounds = realRounds.length > 0
+    ? realRounds.map((r) => r.roundType!)
+    : selectedDrive?.rounds && selectedDrive.rounds.length > 0
     ? selectedDrive.rounds
     : ['Online Coding Test', 'Technical Round 1', 'Technical Round 2', 'HR Interview'];
 

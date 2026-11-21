@@ -58,6 +58,12 @@ export const userApi = {
   sendVerification: (id: number) =>
     request<string>(`/user/${id}/verifyEmail`, { method: "POST" }),
 
+  resendVerification: (email: string) =>
+    request<string>("/user/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    }),
+
   registerTpo: (userId: number) =>
     request<{ id: number; userId: number }>("/tpo/register", {
       method: "POST",

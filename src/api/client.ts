@@ -35,25 +35,31 @@ async function request<T>(
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   const publicEndpoints = [
-    "/auth/",
-    "/user/add",
+    "/auth/login",
+    "/auth/login/students",
+    "/auth/refresh",
+    "/auth/forgot-password",
+    "/auth/reset-password",
+    "/auth/verify-reset-otp",
+    "/auth/google",
+    "/public/",
     "/user/verify-email",
-    "/students/add",
-    "/alumni/add",
-    "/recruiters/register",
-    "/tpo/register",
+    "/user/resend-verification",
   ];
-  const isPublicEndpoint =
+  const isStrictlyUnauthenticated =
     publicEndpoints.some((path) => endpoint.startsWith(path)) ||
-    /^\/user\/\d+\/verifyEmail/.test(endpoint);
+    endpoint === "/auth/login";
+  const isPublicEndpoint = isStrictlyUnauthenticated;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "X-Device-Id": getDeviceId(),
     "X-Device-ID": getDeviceId(),
     ...((options?.headers as Record<string, string>) || {}),
   };
 
-  if (!isPublicEndpoint && token) {
+  // Attach token whenever available unless strictly calling public login routes
+  if (token && !isStrictlyUnauthenticated) {
     headers.Authorization = `Bearer ${token}`;
   }
 
@@ -155,8 +161,29 @@ async function request<T>(
       // Keep the server's plain-text error.
     }
 
+    let resolvedErrorMessage = errorMessage?.trim();
+    if (!resolvedErrorMessage) {
+      if (response.status === 401) {
+        if (endpoint.startsWith("/user/add") || endpoint.startsWith("/user/register")) {
+          resolvedErrorMessage =
+            "Registration rejected by server: Backend Spring Security requires authentication on /user/add (SecurityConfig permits /user/register while UserController exposes /user/add).";
+        } else if (endpoint.startsWith("/students/add") || endpoint.startsWith("/alumni/add") || endpoint.startsWith("/recruiters/register") || endpoint.startsWith("/tpo/register")) {
+          resolvedErrorMessage =
+            `Server requires authentication for ${endpoint}. Please ensure user registration is permitted.`;
+        } else {
+          resolvedErrorMessage = "Session unauthorized or expired (401). Please sign in again.";
+        }
+      } else if (response.status === 404) {
+        resolvedErrorMessage = `Endpoint not found on backend (404): ${endpoint}`;
+      } else if (response.status === 405) {
+        resolvedErrorMessage = `HTTP method not supported for endpoint: ${endpoint} (405 Method Not Allowed)`;
+      } else {
+        resolvedErrorMessage = `API request failed with status ${response.status}`;
+      }
+    }
+
     throw new ApiError(
-      errorMessage || `API request failed with status ${response.status}`,
+      resolvedErrorMessage,
       response.status
     );
   }
